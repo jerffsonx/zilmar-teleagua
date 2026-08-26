@@ -282,12 +282,16 @@ select option{background:var(--card);}
     <div id="successScreen" style="display:none;">
       <div class="success-wrap">
         <div class="success-icon">&#10003;&#65039;</div>
-        <div class="success-title">Venda salva!</div>
+        <div class="success-title" id="successTitle">Venda salva!</div>
         <div class="success-id" id="pedidoId"></div>
         <div class="success-sub" id="pedidoResumo"></div>
         <button class="btn btn-primary" onclick="novoPedido()" style="margin-bottom:10px;">+ Nova Venda</button>
       </div>
     </div>
+
+    <div class="divider"></div>
+    <div class="section-title">&#128203; Vendas de hoje</div>
+    <div id="listaVendasRecentes"><div class="empty-hint">Carregando...</div></div>
   </div>
 
   <!-- ===================== TAB: DESPESAS ===================== -->
@@ -348,6 +352,7 @@ select option{background:var(--card);}
         <input type="text" id="dObs" placeholder="Opcional..."/>
       </div>
       <button class="btn btn-primary" id="btnSalvarDespesa" onclick="salvarDespesa()">&#128190; Salvar Despesa</button>
+      <button class="btn btn-outline btn-sm" id="btnCancelarEdicaoDespesa" style="display:none;margin-top:8px;" onclick="cancelarEdicaoDespesa()">Cancelar edicao</button>
     </div>
 
     <div class="card" style="text-align:center;">
@@ -490,6 +495,7 @@ select option{background:var(--card);}
       <div class="stat-lbl">Total a receber</div>
       <div class="stat-val" id="fiadoTotal" style="color:var(--accent2)">R$ 0,00</div>
     </div>
+    <button class="btn btn-outline btn-sm" onclick="imprimirRelatorioFiado()" style="margin-bottom:14px;">&#128424; Imprimir relatorio por cliente</button>
     <div id="listaFiado"><div class="empty-hint">Carregando...</div></div>
   </div>
 
@@ -543,7 +549,7 @@ select option{background:var(--card);}
     <div id="successCompraScreen" style="display:none;">
       <div class="success-wrap">
         <div class="success-icon">&#10003;&#65039;</div>
-        <div class="success-title">Compra salva!</div>
+        <div class="success-title" id="successCompraTitulo">Compra salva!</div>
         <div class="success-id" id="compraId"></div>
         <div class="success-sub" id="compraResumo"></div>
         <button class="btn btn-primary" onclick="novaCompraForm()" style="margin-bottom:10px;">+ Nova Compra</button>
@@ -560,7 +566,7 @@ select option{background:var(--card);}
 
     <div class="divider"></div>
     <div class="section-title">&#128203; Compras recentes</div>
-    <div class="fiado-hint">Nao da pra "editar" uma compra ja salva. Se lancou errado, clique em <strong>Cancelar</strong> (devolve o estoque) e lance de novo certinho.</div>
+    <div class="fiado-hint">&#9999;&#65039; Errou algo (fornecedor, item, forma de pagamento)? Clique em <strong>Editar</strong> na compra e corrija. Se quiser desfazer a compra inteira, use <strong>Cancelar</strong> (devolve o estoque).</div>
     <div id="listaComprasRecentes"><div class="empty-hint">Carregando...</div></div>
   </div>
 
@@ -596,6 +602,7 @@ select option{background:var(--card);}
 var API_URL = 'https://script.google.com/macros/s/AKfycbzz2SFl7Giir4AklAzDr3Whreh2I-59XMte2jTUv8_gTwHqTPkkx7p8mm2yH9dLRF0Hkw/exec';
 var PIN_CORRETO = '1234';
 var cart = {}, selectedPayment = 'Dinheiro', selectedConta = 'Caixa';
+var editandoVendaId = null;
 var produtos = [
   {id:1,emoji:'💧',name:'Galao Agua 20L (sem vasilhame)',price:8.00,estoque:0},
   {id:2,emoji:'💧',name:'Galao Agua 20L (com vasilhame)',price:25.00,estoque:0},
@@ -815,6 +822,7 @@ function entrarNoApp(){
   document.getElementById('appScreen').style.display='block';
   document.getElementById('tabbar').style.display='flex';
   renderProdutos();
+  carregarVendasRecentes();
 }
 
 /* ---------- TABS ---------- */
@@ -827,6 +835,7 @@ function trocarTab(nome, el){
   el.classList.add('active');
   document.getElementById('tabHeading').innerHTML = headings[nome];
   window.scrollTo({top:0,behavior:'smooth'});
+  if(nome==='Vender'){ carregarVendasRecentes(); }
   if(nome==='Despesas' && !tabsCarregadas.Despesas){ tabsCarregadas.Despesas=true; carregarDespesas('hoje'); }
   if(nome==='Caixa' && !tabsCarregadas.Caixa){ tabsCarregadas.Caixa=true; carregarCaixa('hoje'); }
   if(nome==='Estoque'){ carregarEstoque(); }
@@ -900,6 +909,17 @@ function atualizarTotal(){
   document.getElementById('totalVal').textContent = fmtR$(getTotal());
 }
 
+// Marca visualmente qual botao .pay-opt de um grupo corresponde a um valor
+// (usado ao abrir uma venda/compra/despesa pra editar, pra deixar o botao
+// certo ja selecionado). Le o valor direto do onclick de cada botao
+// (onclick="selectX(this,'Valor')") em vez de precisar de uma tabela separada.
+function marcarBotaoPorValor(containerId, valor){
+  document.querySelectorAll('#'+containerId+' .pay-opt').forEach(function(o){
+    var m = (o.getAttribute('onclick')||'').match(/,'([^']*)'\)/);
+    o.classList.toggle('selected', !!m && m[1]===valor);
+  });
+}
+
 function selectPay(el,label){
   document.querySelectorAll('#payOptionsVender .pay-opt').forEach(function(o){o.classList.remove('selected');});
   el.classList.add('selected'); selectedPayment=label;
@@ -956,10 +976,11 @@ function salvarPedido(){
   var itensStr = itensArr.map(function(i){return i.nome+' x'+i.qtd+' (R$'+(i.qtd*i.precoUnit).toFixed(2).replace('.',',')+')';}).join(' | ');
 
   var btn = document.getElementById('btnSalvar');
+  var estavaEditando = editandoVendaId;
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Salvando...';
 
-  jsonpCall('novoPedido', {
+  var params = {
     nome: nome,
     telefone: tel.replace(/\D/g,''),
     endereco: end,
@@ -975,11 +996,17 @@ function salvarPedido(){
     origem: 'balcao',
     vendedor: vendedorAtual,
     conta: selectedConta
-  }, 12000).then(function(d){
+  };
+  var acao = 'novoPedido';
+  if(estavaEditando){ acao = 'editarPedido'; params.vendaId = estavaEditando; }
+
+  jsonpCall(acao, params, 12000).then(function(d){
     btn.disabled=false;
     btn.innerHTML='&#128190; Salvar Venda';
     if(d && d.ok){
-      mostrarSucesso(d.id, nome, total, itensArr);
+      editandoVendaId = null;
+      mostrarSucesso(d.id || estavaEditando, nome, total, itensArr, !!estavaEditando);
+      carregarVendasRecentes();
     } else {
       customAlert(d && d.erro ? d.erro : 'Erro ao salvar. Tente novamente.');
     }
@@ -989,9 +1016,10 @@ function salvarPedido(){
   });
 }
 
-function mostrarSucesso(id, nome, total, itens){
+function mostrarSucesso(id, nome, total, itens, foiEdicao){
   document.getElementById('formScreen').style.display='none';
   document.getElementById('successScreen').style.display='block';
+  document.getElementById('successTitle').textContent = foiEdicao ? 'Venda editada!' : 'Venda salva!';
   document.getElementById('pedidoId').textContent = 'Venda #'+id;
   var extra = selectedPayment==='Fiado' ? '<br><span style="color:var(--accent2)">&#9203; Fiado — acompanhe na aba "Fiado"</span>' : '';
   document.getElementById('pedidoResumo').innerHTML =
@@ -1004,6 +1032,7 @@ function mostrarSucesso(id, nome, total, itens){
 function novoPedido(){
   cart={};
   precosEditados={};
+  editandoVendaId=null;
   document.getElementById('fNome').value='';
   document.getElementById('fTel').value='';
   document.getElementById('fEnd').value='';
@@ -1017,8 +1046,79 @@ function novoPedido(){
   if(hint) hint.style.display='none';
   carregarProdutos();
   atualizarTotal();
+  document.getElementById('btnSalvar').innerHTML = '&#128190; Salvar Venda';
   document.getElementById('formScreen').style.display='block';
   document.getElementById('successScreen').style.display='none';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// Carrega a lista de vendas de hoje na propria aba Vender, com um botao
+// Editar em cada uma -- pra corrigir erro de quantidade/forma de
+// pagamento/conta sem precisar cancelar e lancar de novo.
+function carregarVendasRecentes(){
+  jsonpCall('listarVendas', {inicio: hojeISO(), fim: hojeISO()}).then(function(d){
+    var el = document.getElementById('listaVendasRecentes');
+    if(!el) return;
+    if(!d || !d.ok || !d.vendas || !d.vendas.length){
+      el.innerHTML = '<div class="empty-hint">Nenhuma venda registrada hoje.</div>';
+      return;
+    }
+    el.innerHTML = d.vendas.map(function(v){
+      var horaSo = String(v.dataHora||'').split(' ').pop();
+      var statusTxt = v.statusPagamento==='pendente' ? '<span style="color:var(--accent2)">Fiado pendente</span>' : (v.pagamento||'');
+      return '<div class="list-item" style="align-items:flex-start;">'+
+      '<div class="li-main"><div class="li-title">'+(v.nome||'Venda Balcao')+'</div>'+
+      '<div class="li-sub">'+horaSo+' &middot; '+statusTxt+'</div>'+
+      '<div class="li-sub">'+(v.itens||'')+'</div></div>'+
+      '<div style="text-align:right;flex-shrink:0;">'+
+      '<div class="li-val">'+fmtR$(v.total)+'</div>'+
+      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarVendaUI(\''+v.id+'\')">Editar</button>'+
+      '</div></div>';
+    }).join('');
+  }).catch(function(){ var el=document.getElementById('listaVendasRecentes'); if(el) el.innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
+}
+
+// Abre a venda (de hoje, de qualquer status) na propria tela de Vender pra
+// corrigir cliente, quantidade, forma de pagamento ou conta, sem precisar
+// cancelar e lancar de novo. Pode ser chamada tanto da lista "Vendas de
+// hoje" quanto da aba Fiado (uma venda fiado tambem e uma venda).
+function editarVendaUI(vendaId){
+  jsonpCall('listarVendas', {inicio: '', fim: ''}).then(function(d){
+    var venda = d && d.vendas && d.vendas.find(function(v){ return String(v.id)===String(vendaId); });
+    if(!venda){ customAlert('Venda nao encontrada.'); return; }
+    editandoVendaId = vendaId;
+    cart = {}; precosEditados = {};
+    (venda.itensArr||[]).forEach(function(it){
+      if(it.id){ cart[it.id] = it.qtd; precosEditados[it.id] = it.precoUnit; }
+    });
+    document.getElementById('fNome').value = venda.nome || '';
+    document.getElementById('fTel').value = venda.telefone || '';
+    document.getElementById('fEnd').value = venda.endereco || '';
+    document.getElementById('fObs').value = (venda.obs && venda.obs!=='Venda Balcao') ? venda.obs : '';
+    document.getElementById('clienteHint').style.display='none';
+    selectedPayment = venda.pagamento || 'Dinheiro';
+    selectedConta = venda.conta || 'Caixa';
+    marcarBotaoPorValor('payOptionsVender', selectedPayment);
+    marcarBotaoPorValor('contaOptionsVender', selectedConta);
+    var hint = document.getElementById('fiadoHint');
+    if(hint) hint.style.display = (selectedPayment==='Fiado') ? 'block' : 'none';
+    carregarProdutos();
+    atualizarTotal();
+    document.getElementById('btnSalvar').innerHTML = '&#128190; Salvar edicao';
+    document.getElementById('formScreen').style.display='block';
+    document.getElementById('successScreen').style.display='none';
+    mostrarTabVender();
+  }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
+// Muda pra aba Vender programaticamente (sem precisar do elemento do botao
+// da tabbar) -- usado ao clicar em "Editar" numa venda a partir da aba
+// Fiado, por exemplo.
+function mostrarTabVender(){
+  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
+  document.getElementById('tabVender').classList.add('active');
+  document.querySelectorAll('.tabbar-btn').forEach(function(b,i){b.classList.toggle('active', i===0);});
+  document.getElementById('tabHeading').innerHTML = headings['Vender'];
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -1039,6 +1139,7 @@ var precosCompra = {};
 var selectedPaymentCompra = 'Dinheiro';
 var selectedContaCompra = 'Caixa';
 var produtosCompraCarregados = false;
+var editandoCompraId = null;
 
 // Lista de "produtos" compraveis: os produtos normais de estoque (menos
 // "Agua 20L", que nunca se compra direto — ela so entra via "Encher
@@ -1136,11 +1237,12 @@ function salvarCompra(){
   var totalNum = getTotalCompra();
   if(totalNum<=0){ customAlert('Informe o preco dos itens (o total esta zerado).'); return; }
 
+  var estavaEditando = editandoCompraId;
   var btn = document.getElementById('btnSalvarCompra');
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Salvando...';
 
-  jsonpCall('novaCompra', {
+  var params = {
     fornecedor: fornecedor,
     itensJson: JSON.stringify(itensArr),
     totalNum: totalNum,
@@ -1148,11 +1250,16 @@ function salvarCompra(){
     conta: selectedContaCompra,
     obs: obs,
     vendedor: vendedorAtual
-  }, 12000).then(function(d){
+  };
+  var acao = 'novaCompra';
+  if(estavaEditando){ acao = 'editarCompra'; params.compraId = estavaEditando; }
+
+  jsonpCall(acao, params, 12000).then(function(d){
     btn.disabled=false;
     btn.innerHTML='&#128190; Salvar Compra';
     if(d && d.ok){
-      mostrarSucessoCompra(d.id, fornecedor, totalNum, itensArr, d.statusPagamento);
+      editandoCompraId = null;
+      mostrarSucessoCompra(d.id || estavaEditando, fornecedor, totalNum, itensArr, d.statusPagamento, !!estavaEditando);
     } else {
       customAlert(d && d.erro ? d.erro : 'Erro ao salvar. Tente novamente.');
     }
@@ -1162,9 +1269,11 @@ function salvarCompra(){
   });
 }
 
-function mostrarSucessoCompra(id, fornecedor, total, itens, statusPagamento){
+function mostrarSucessoCompra(id, fornecedor, total, itens, statusPagamento, foiEdicao){
   document.getElementById('formCompraScreen').style.display='none';
   document.getElementById('successCompraScreen').style.display='block';
+  var tituloEl = document.getElementById('successCompraTitulo');
+  if(tituloEl) tituloEl.textContent = foiEdicao ? 'Compra editada!' : 'Compra salva!';
   document.getElementById('compraId').textContent = 'Compra #'+id;
   var extra = statusPagamento==='pendente' ? '<br><span style="color:var(--accent2)">&#9203; A prazo &mdash; acompanhe em "Fornecedores"</span>' : '';
   document.getElementById('compraResumo').innerHTML =
@@ -1177,6 +1286,7 @@ function mostrarSucessoCompra(id, fornecedor, total, itens, statusPagamento){
 }
 
 function novaCompraForm(){
+  editandoCompraId = null;
   cartCompra={};
   precosCompra={};
   document.getElementById('cFornecedorNovo').value='';
@@ -1194,7 +1304,64 @@ function novaCompraForm(){
   atualizarTotalCompra();
   document.getElementById('formCompraScreen').style.display='block';
   document.getElementById('successCompraScreen').style.display='none';
+  var btn = document.getElementById('btnSalvarCompra');
+  if(btn) btn.innerHTML = '&#128190; Salvar Compra';
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// Abre o form de compra ja preenchido com os dados de uma compra existente,
+// pra corrigir fornecedor, itens, forma de pagamento, conta, etc sem
+// precisar cancelar e lancar tudo de novo do zero.
+function editarCompraUI(compraId){
+  jsonpCall('listarCompras', {}).then(function(d){
+    if(!d || !d.ok || !d.compras){ customAlert('Erro ao carregar a compra.'); return; }
+    var c = d.compras.find(function(x){ return String(x.id)===String(compraId); });
+    if(!c){ customAlert('Compra nao encontrada.'); return; }
+    if(c.statusPagamento==='cancelada'){ customAlert('Essa compra foi cancelada e nao pode ser editada.'); return; }
+    var itens = c.itensArr || [];
+    if(!itens.length || itens.some(function(i){ return i.tipo==='galaoVazio'; })){
+      customAlert('Essa compra tem um item antigo que nao existe mais nessa tela (vasilhame vazio avulso). Para corrigir, clique em "Cancelar" e lance de novo certinho.');
+      return;
+    }
+
+    editandoCompraId = compraId;
+    cartCompra = {};
+    precosCompra = {};
+    itens.forEach(function(i){
+      var key = i.tipo==='galaoEncher' ? 'galaoEncher' : i.id;
+      cartCompra[key] = i.qtd;
+      precosCompra[key] = i.precoUnit;
+    });
+
+    var sel = document.getElementById('cFornecedorSelect');
+    var novoInput = document.getElementById('cFornecedorNovo');
+    if(sel){
+      if(fornecedoresCarregados.indexOf(c.fornecedor)!==-1){
+        sel.value = c.fornecedor;
+        novoInput.style.display='none';
+        novoInput.value='';
+      } else {
+        sel.value = '__novo__';
+        novoInput.style.display='block';
+        novoInput.value = c.fornecedor;
+      }
+    }
+    document.getElementById('cObs').value = c.obs || '';
+    selectedPaymentCompra = c.formaPagamento || 'Dinheiro';
+    selectedContaCompra = c.conta || 'Caixa';
+    marcarBotaoPorValor('payOptionsCompra', selectedPaymentCompra);
+    marcarBotaoPorValor('contaOptionsCompra', selectedContaCompra);
+    var hint = document.getElementById('prazoHint');
+    if(hint) hint.style.display = (selectedPaymentCompra==='A prazo') ? 'block' : 'none';
+
+    renderProdutosCompra();
+    atualizarTotalCompra();
+    document.getElementById('formCompraScreen').style.display='block';
+    document.getElementById('successCompraScreen').style.display='none';
+    var btn = document.getElementById('btnSalvarCompra');
+    if(btn) btn.innerHTML = '&#128190; Salvar edicao';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
 /* ---------- Fornecedores (lista suspensa + adicionar novo) ---------- */
@@ -1254,6 +1421,7 @@ function carregarContasPagar(){
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val neg" style="margin-bottom:6px;">'+fmtR$(c.total)+'</div>'+
       '<button class="btn btn-primary btn-sm" onclick="darBaixaCompraUI(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
+      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarCompraUI(\''+c.id+'\')">Editar</button>'+
       '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarCompraUI(\''+c.id+'\',\''+c.fornecedor.replace(/'/g,"")+'\')">Cancelar</button>'+
       '</div></div>';
     }).join('');
@@ -1304,6 +1472,7 @@ function carregarComprasRecentes(){
     var recentes = d.compras.slice(0, 15);
     el.innerHTML = recentes.map(function(c){
       var statusTxt = c.statusPagamento==='cancelada' ? '<span style="opacity:.6;">Cancelada</span>' : (c.statusPagamento==='pendente' ? 'Pendente' : 'Paga ('+(c.formaPagamento||'')+')');
+      var btnEditar = c.statusPagamento==='cancelada' ? '' : '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarCompraUI(\''+c.id+'\')">Editar</button>';
       var btnCancelar = c.statusPagamento==='cancelada' ? '' : '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarCompraUI(\''+c.id+'\',\''+c.fornecedor.replace(/'/g,"")+'\')">Cancelar</button>';
       return '<div class="list-item" style="align-items:flex-start;'+(c.statusPagamento==='cancelada'?'opacity:.55;':'')+'">'+
       '<div class="li-main"><div class="li-title">'+c.fornecedor+'</div>'+
@@ -1311,6 +1480,7 @@ function carregarComprasRecentes(){
       '<div class="li-sub">'+c.itens+'</div></div>'+
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val">'+fmtR$(c.total)+'</div>'+
+      btnEditar+
       btnCancelar+
       '</div></div>';
     }).join('');
@@ -1318,10 +1488,51 @@ function carregarComprasRecentes(){
 }
 
 /* ---------- DESPESAS ---------- */
+var editandoDespesaId = null;
+
 function abrirFormDespesa(){
   document.getElementById('formDespesa').classList.toggle('open');
   var dData = document.getElementById('dData');
   if(!dData.value) dData.value = hojeISO();
+}
+
+function limparFormDespesa(){
+  document.getElementById('dDesc').value='';
+  document.getElementById('dValor').value='';
+  document.getElementById('dObs').value='';
+  document.getElementById('dData').value = hojeISO();
+  document.getElementById('dCategoria').selectedIndex = 0;
+  document.getElementById('dPagamento').selectedIndex = 0;
+  document.getElementById('dConta').value = 'Caixa';
+}
+
+function cancelarEdicaoDespesa(){
+  editandoDespesaId = null;
+  document.getElementById('btnSalvarDespesa').innerHTML = '&#128190; Salvar Despesa';
+  document.getElementById('btnCancelarEdicaoDespesa').style.display='none';
+  limparFormDespesa();
+  document.getElementById('formDespesa').classList.remove('open');
+}
+
+// Abre uma despesa ja lancada pra corrigir (valor, forma de pagamento,
+// categoria, conta etc.) sem precisar apagar e lancar de novo.
+function editarDespesaUI(despesaId){
+  jsonpCall('listarDespesas', {inicio:'', fim:''}).then(function(d){
+    var desp = d && d.despesas && d.despesas.find(function(x){ return String(x.id)===String(despesaId); });
+    if(!desp){ customAlert('Despesa nao encontrada.'); return; }
+    editandoDespesaId = despesaId;
+    document.getElementById('dDesc').value = desp.descricao || '';
+    document.getElementById('dData').value = desp.dataIso || hojeISO();
+    document.getElementById('dValor').value = desp.valor || '';
+    document.getElementById('dCategoria').value = desp.categoria || 'Outros';
+    document.getElementById('dPagamento').value = desp.formaPagamento || 'Dinheiro';
+    document.getElementById('dConta').value = desp.conta || 'Caixa';
+    document.getElementById('dObs').value = desp.obs || '';
+    document.getElementById('formDespesa').classList.add('open');
+    document.getElementById('btnSalvarDespesa').innerHTML = '&#128190; Salvar edicao';
+    document.getElementById('btnCancelarEdicaoDespesa').style.display='block';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
 function salvarDespesa(){
@@ -1331,8 +1542,9 @@ function salvarDespesa(){
   if(!desc){ customAlert('Descreva a despesa.'); return; }
   if(!valor || valor<=0){ customAlert('Informe um valor valido.'); return; }
   var btn = document.getElementById('btnSalvarDespesa');
+  var estavaEditando = editandoDespesaId;
   btn.disabled=true; btn.innerHTML='<div class="spinner"></div> Salvando...';
-  jsonpCall('registrarDespesa', {
+  var params = {
     descricao: desc,
     valor: valor,
     categoria: document.getElementById('dCategoria').value,
@@ -1341,19 +1553,24 @@ function salvarDespesa(){
     obs: document.getElementById('dObs').value.trim(),
     data: data,
     vendedor: vendedorAtual
-  }).then(function(d){
-    btn.disabled=false; btn.innerHTML='&#128190; Salvar Despesa';
+  };
+  var acao = 'registrarDespesa';
+  if(estavaEditando){ acao = 'editarDespesa'; params.despesaId = estavaEditando; }
+  jsonpCall(acao, params).then(function(d){
+    btn.disabled=false;
     if(d && d.ok){
-      document.getElementById('dDesc').value='';
-      document.getElementById('dValor').value='';
-      document.getElementById('dObs').value='';
-      document.getElementById('dData').value = hojeISO();
-      document.getElementById('dConta').value = 'Caixa';
+      editandoDespesaId = null;
+      btn.innerHTML='&#128190; Salvar Despesa';
+      document.getElementById('btnCancelarEdicaoDespesa').style.display='none';
+      limparFormDespesa();
       document.getElementById('formDespesa').classList.remove('open');
       carregarDespesas('hoje');
       tabsCarregadas.Caixa=false;
-    } else { customAlert(d && d.erro ? d.erro : 'Erro ao salvar despesa.'); }
-  }).catch(function(){ btn.disabled=false; btn.innerHTML='&#128190; Salvar Despesa'; customAlert('Erro de conexao.'); });
+    } else {
+      btn.innerHTML = estavaEditando ? '&#128190; Salvar edicao' : '&#128190; Salvar Despesa';
+      customAlert(d && d.erro ? d.erro : 'Erro ao salvar despesa.');
+    }
+  }).catch(function(){ btn.disabled=false; btn.innerHTML = estavaEditando ? '&#128190; Salvar edicao' : '&#128190; Salvar Despesa'; customAlert('Erro de conexao.'); });
 }
 
 function carregarDespesas(periodo){
@@ -1370,7 +1587,10 @@ function carregarDespesas(periodo){
     el.innerHTML = d.despesas.map(function(x){
       return '<div class="list-item"><div class="li-main"><div class="li-title">'+x.descricao+'</div>'+
       '<div class="li-sub">'+x.data+' · <span class="chip">'+x.categoria+'</span> · '+x.formaPagamento+(x.vendedor?' · '+x.vendedor:'')+'</div></div>'+
-      '<div class="li-val neg">-'+fmtR$(x.valor)+'</div></div>';
+      '<div style="text-align:right;flex-shrink:0;">'+
+      '<div class="li-val neg" style="margin-bottom:6px;">-'+fmtR$(x.valor)+'</div>'+
+      '<button class="btn btn-outline btn-sm" onclick="editarDespesaUI(\''+x.id+'\')">Editar</button>'+
+      '</div></div>';
     }).join('');
   }).catch(function(){ document.getElementById('listaDespesas').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
 }
@@ -1625,9 +1845,53 @@ function carregarFiado(){
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val" style="margin-bottom:6px;">'+fmtR$(c.total)+'</div>'+
       '<button class="btn btn-primary btn-sm" onclick="darBaixa(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
+      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarVendaUI(\''+c.id+'\')">Editar</button>'+
       '</div></div>';
     }).join('');
   }).catch(function(){ document.getElementById('listaFiado').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
+}
+
+// Relatorio de fiado agrupado por cliente -- pra saber de uma vez quem deve
+// quanto no total (util pra cobranca e conferencia mensal), em vez de so
+// listar cada venda pendente separada.
+function imprimirRelatorioFiado(){
+  jsonpCall('listarContasReceber', {}).then(function(d){
+    montarRelatorioFiadoPorCliente(d);
+    setTimeout(function(){ window.print(); }, 150);
+  }).catch(function(){ customAlert('Erro ao montar o relatorio.'); });
+}
+
+function montarRelatorioFiadoPorCliente(d){
+  var agoraFmt = new Date().toLocaleDateString('pt-BR');
+  var html = '<h1>Zilmar Tele Agua e Gas &mdash; Fiado em aberto por cliente ('+agoraFmt+')</h1>';
+  if(!d || !d.ok || !d.contas || !d.contas.length){
+    html += '<p>Nenhuma conta em aberto. &#127881;</p>';
+  } else {
+    var porCliente = {};
+    var ordem = [];
+    d.contas.forEach(function(c){
+      var chave = (c.telefone || c.nome || '?').trim();
+      if(!porCliente[chave]){
+        porCliente[chave] = { nome: c.nome||'Cliente', telefone: c.telefone||'', qtd:0, total:0, maiorAtraso:0 };
+        ordem.push(chave);
+      }
+      var g = porCliente[chave];
+      g.qtd += 1;
+      g.total += Number(c.total)||0;
+      if((c.diasEmAberto||0) > g.maiorAtraso) g.maiorAtraso = c.diasEmAberto;
+    });
+    ordem.sort(function(a,b){ return porCliente[b].total - porCliente[a].total; });
+    var totalGeral = ordem.reduce(function(s,k){ return s+porCliente[k].total; },0);
+    html += '<table><tr><th>Cliente</th><th>Telefone</th><th>Vendas pendentes</th><th>Mais antiga (dias)</th><th>Total devido</th></tr>';
+    ordem.forEach(function(k){
+      var g = porCliente[k];
+      html += '<tr><td>'+g.nome+'</td><td>'+(g.telefone||'-')+'</td><td style="text-align:center;">'+g.qtd+'</td><td style="text-align:center;">'+g.maiorAtraso+'</td><td>'+fmtR$(g.total)+'</td></tr>';
+    });
+    html += '<tr style="font-weight:bold;background:#f0f0f0;"><td colspan="4">Total geral a receber</td><td>'+fmtR$(totalGeral)+'</td></tr>';
+    html += '</table>';
+  }
+  html += '<p>Impresso em '+new Date().toLocaleString('pt-BR')+'</p>';
+  document.getElementById('printArea').innerHTML = html;
 }
 
 async function darBaixa(vendaId, total){
@@ -1729,10 +1993,38 @@ function montarRelatorioImpressao(resumo, vendasResp, estoqueResp, perdasResp){
 
   html += '<h2>Vendas de hoje</h2>';
   if(vendasResp && vendasResp.ok && vendasResp.vendas && vendasResp.vendas.length){
-    html += '<table><tr><th>Hora</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>Vendedor</th></tr>';
-    vendasResp.vendas.forEach(function(v){
-      html += '<tr><td>'+(v.dataHora||'')+'</td><td>'+(v.nome||'-')+'</td><td>'+(v.itens||'')+'</td><td>'+fmtR$(v.total)+'</td><td>'+(v.pagamento||'')+'</td><td>'+(v.vendedor||'')+'</td></tr>';
+    var vendas = vendasResp.vendas;
+    // Uma coluna por produto vendido no dia (em vez de um texto corrido de
+    // itens) -- facilita conferir quantidade por produto de cada venda.
+    // Ordem: pelo total vendido no dia (produto mais vendido primeiro).
+    var totalPorProduto = {};
+    var ordemProdutos = [];
+    vendas.forEach(function(v){
+      (v.itensArr||[]).forEach(function(it){
+        var nome = it.nome || '?';
+        if(totalPorProduto[nome]===undefined){ totalPorProduto[nome]=0; ordemProdutos.push(nome); }
+        totalPorProduto[nome] += Number(it.qtd)||0;
+      });
     });
+    ordemProdutos.sort(function(a,b){ return totalPorProduto[b]-totalPorProduto[a]; });
+
+    html += '<table><tr><th>Hora</th><th>Cliente</th>'+
+      ordemProdutos.map(function(p){ return '<th>'+p+'</th>'; }).join('')+
+      '<th>Total</th><th>Pagamento</th><th>Vendedor</th></tr>';
+    var totalGeralDia = 0;
+    vendas.forEach(function(v){
+      var horaSo = String(v.dataHora||'').split(' ').pop();
+      var qtdPorProduto = {};
+      (v.itensArr||[]).forEach(function(it){ qtdPorProduto[it.nome] = (qtdPorProduto[it.nome]||0) + (Number(it.qtd)||0); });
+      totalGeralDia += Number(v.total)||0;
+      html += '<tr><td>'+horaSo+'</td><td>'+(v.nome||'-')+'</td>'+
+        ordemProdutos.map(function(p){ return '<td style="text-align:center;">'+(qtdPorProduto[p]||'')+'</td>'; }).join('')+
+        '<td>'+fmtR$(v.total)+'</td><td>'+(v.pagamento||'')+'</td><td>'+(v.vendedor||'')+'</td></tr>';
+    });
+    // Linha de resumo no final: total de cada produto vendido no dia, pra bater com a contagem fisica.
+    html += '<tr style="font-weight:bold;background:#f0f0f0;"><td colspan="2">Total do dia</td>'+
+      ordemProdutos.map(function(p){ return '<td style="text-align:center;">'+totalPorProduto[p]+'</td>'; }).join('')+
+      '<td>'+fmtR$(totalGeralDia)+'</td><td></td><td></td></tr>';
     html += '</table>';
   } else {
     html += '<p>Nenhuma venda registrada hoje.</p>';
