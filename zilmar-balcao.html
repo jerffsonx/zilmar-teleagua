@@ -220,13 +220,14 @@ select option{background:var(--card);}
       <div class="row-2">
         <div class="form-group">
           <label>Telefone</label>
-          <input type="tel" id="fTel" placeholder="(opcional)"/>
+          <input type="tel" id="fTel" placeholder="(opcional)" oninput="onTelefoneInput()"/>
         </div>
         <div class="form-group">
           <label>Endereco</label>
           <input type="text" id="fEnd" placeholder="(opcional)"/>
         </div>
       </div>
+      <div class="empty-hint" id="clienteHint" style="display:none;margin:-6px 0 12px;"></div>
 
       <div class="divider"></div>
       <div class="section-title">&#128230; Produtos</div>
@@ -638,6 +639,31 @@ function selectPay(el,label){
   if(hint) hint.style.display = (label==='Fiado') ? 'block' : 'none';
 }
 
+/* ---------- BUSCAR CLIENTE PELO TELEFONE (autopreenche nome/endereco) ---------- */
+var _clienteBt = null;
+function onTelefoneInput(){
+  var n = document.getElementById('fTel').value.replace(/\D/g,'');
+  clearTimeout(_clienteBt);
+  if(n.length < 10){ document.getElementById('clienteHint').style.display='none'; return; }
+  _clienteBt = setTimeout(function(){ buscarClienteBalcao(n); }, 600);
+}
+
+function buscarClienteBalcao(telefone){
+  jsonpCall('buscarCliente', {telefone: telefone}).then(function(d){
+    var hint = document.getElementById('clienteHint');
+    if(d && d.ok && d.encontrado){
+      var nomeEl = document.getElementById('fNome');
+      var endEl = document.getElementById('fEnd');
+      if(!nomeEl.value.trim()) nomeEl.value = d.nome;
+      if(!endEl.value.trim() && d.endereco) endEl.value = d.endereco;
+      hint.style.display='block';
+      hint.innerHTML = '&#128100; Cliente encontrado: <strong>'+d.nome+'</strong> &middot; '+(d.totalPedidos||0)+' compra(s) &middot; '+fmtR$(d.totalGasto||0)+' gasto no total';
+    } else {
+      hint.style.display='none';
+    }
+  }).catch(function(){});
+}
+
 function salvarPedido(){
   var nome = document.getElementById('fNome').value.trim() || 'Venda Balcao';
   var tel  = document.getElementById('fTel').value.trim();
@@ -709,6 +735,7 @@ function novoPedido(){
   document.getElementById('fTel').value='';
   document.getElementById('fEnd').value='';
   document.getElementById('fObs').value='';
+  document.getElementById('clienteHint').style.display='none';
   selectedPayment='Dinheiro';
   document.querySelectorAll('#formScreen .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
   var hint = document.getElementById('fiadoHint');
