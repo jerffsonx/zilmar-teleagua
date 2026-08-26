@@ -71,6 +71,7 @@ select option{background:var(--card);}
 .qty-btn{width:28px;height:28px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
 .qty-btn:active{background:var(--accent);color:#000;}
 .qty-num{font-family:"Syne",sans-serif;font-weight:700;font-size:16px;min-width:18px;text-align:center;}
+.qty-num-input{font-family:"Syne",sans-serif;font-weight:700;font-size:16px;width:40px;text-align:center;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 0;}
 
 .pay-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
 .pay-opt{background:var(--card);border:2px solid var(--border);border-radius:10px;padding:10px;text-align:center;cursor:pointer;transition:all .2s;}
@@ -466,7 +467,11 @@ select option{background:var(--card);}
     <div id="formCompraScreen">
       <div class="form-group">
         <label>Fornecedor</label>
-        <input type="text" id="cFornecedor" placeholder="Nome do fornecedor"/>
+        <select id="cFornecedorSelect" onchange="onFornecedorSelectChange()">
+          <option value="">Selecione o fornecedor...</option>
+          <option value="__novo__">+ Novo fornecedor...</option>
+        </select>
+        <input type="text" id="cFornecedorNovo" placeholder="Nome do novo fornecedor" style="display:none;margin-top:8px;"/>
       </div>
 
       <div class="divider"></div>
@@ -722,7 +727,7 @@ function trocarTab(nome, el){
   if(nome==='Caixa' && !tabsCarregadas.Caixa){ tabsCarregadas.Caixa=true; carregarCaixa('hoje'); }
   if(nome==='Estoque'){ carregarEstoque(); }
   if(nome==='Fiado'){ carregarFiado(); }
-  if(nome==='Compras'){ if(!produtosCompraCarregados){ produtosCompraCarregados=true; renderProdutosCompra(); } carregarContasPagar(); }
+  if(nome==='Compras'){ if(!produtosCompraCarregados){ produtosCompraCarregados=true; renderProdutosCompra(); } carregarContasPagar(); carregarFornecedores(); }
 }
 
 /* ---------- PRODUTOS / VENDER ---------- */
@@ -758,7 +763,7 @@ function renderProdutos(){
     stockLine+'</div>'+
     '<div class="qty-control">'+
     '<button class="qty-btn" onclick="changeQty('+p.id+',-1)">−</button>'+
-    '<div class="qty-num" id="bqty-'+p.id+'">'+(cart[p.id]||0)+'</div>'+
+    '<input type="number" class="qty-num-input" id="bqty-'+p.id+'" min="0" step="1" inputmode="numeric" value="'+(cart[p.id]||0)+'" onclick="event.stopPropagation()" onchange="setQty('+p.id+',this.value)"/>'+
     '<button class="qty-btn" onclick="changeQty('+p.id+',1)">+</button>'+
     '</div></div>';
   }).join('');
@@ -768,9 +773,20 @@ function changeQty(id,delta){
   cart[id]=Math.max(0,(cart[id]||0)+delta);
   if(!cart[id])delete cart[id];
   var el=document.getElementById('bqty-'+id);
-  if(el) el.textContent=cart[id]||0;
+  if(el) el.value=cart[id]||0;
   var row=document.getElementById('prow-'+id);
   if(row) row.classList.toggle('in-cart',!!cart[id]);
+  atualizarTotal();
+}
+
+function setQty(id,valor){
+  var n=Math.max(0,Math.floor(Number(valor))||0);
+  cart[id]=n;
+  if(!cart[id])delete cart[id];
+  var el=document.getElementById('bqty-'+id);
+  if(el) el.value=n;
+  var row=document.getElementById('prow-'+id);
+  if(row) row.classList.toggle('in-cart',!!n);
   atualizarTotal();
 }
 
@@ -946,7 +962,7 @@ function renderProdutosCompra(){
     '</div>'+
     '<div class="qty-control">'+
     '<button class="qty-btn" onclick="changeQtyCompra(\''+p.id+'\',-1)">&minus;</button>'+
-    '<div class="qty-num" id="bqtyc-'+p.id+'">'+(cartCompra[p.id]||0)+'</div>'+
+    '<input type="number" class="qty-num-input" id="bqtyc-'+p.id+'" min="0" step="1" inputmode="numeric" value="'+(cartCompra[p.id]||0)+'" onclick="event.stopPropagation()" onchange="setQtyCompra(\''+p.id+'\',this.value)"/>'+
     '<button class="qty-btn" onclick="changeQtyCompra(\''+p.id+'\',1)">+</button>'+
     '</div></div>';
   }).join('');
@@ -956,9 +972,20 @@ function changeQtyCompra(id,delta){
   cartCompra[id]=Math.max(0,(cartCompra[id]||0)+delta);
   if(!cartCompra[id])delete cartCompra[id];
   var el=document.getElementById('bqtyc-'+id);
-  if(el) el.textContent=cartCompra[id]||0;
+  if(el) el.value=cartCompra[id]||0;
   var row=document.getElementById('prowc-'+id);
   if(row) row.classList.toggle('in-cart',!!cartCompra[id]);
+  atualizarTotalCompra();
+}
+
+function setQtyCompra(id,valor){
+  var n=Math.max(0,Math.floor(Number(valor))||0);
+  cartCompra[id]=n;
+  if(!cartCompra[id])delete cartCompra[id];
+  var el=document.getElementById('bqtyc-'+id);
+  if(el) el.value=n;
+  var row=document.getElementById('prowc-'+id);
+  if(row) row.classList.toggle('in-cart',!!n);
   atualizarTotalCompra();
 }
 
@@ -977,7 +1004,7 @@ function selectPayCompra(el,label){
 }
 
 function salvarCompra(){
-  var fornecedor = document.getElementById('cFornecedor').value.trim();
+  var fornecedor = getFornecedorAtual();
   var obs = document.getElementById('cObs').value.trim();
   if(!fornecedor){ customAlert('Informe o fornecedor.'); return; }
   var lista = getProdutosCompra();
@@ -1027,12 +1054,16 @@ function mostrarSucessoCompra(id, fornecedor, total, itens, statusPagamento){
     '<strong style="color:var(--accent)">'+fmtR$(total)+'</strong> &mdash; '+selectedPaymentCompra+extra;
   tabsCarregadas.Caixa=false;
   carregarContasPagar();
+  carregarFornecedores();
 }
 
 function novaCompraForm(){
   cartCompra={};
   precosCompra={};
-  document.getElementById('cFornecedor').value='';
+  document.getElementById('cFornecedorNovo').value='';
+  document.getElementById('cFornecedorNovo').style.display='none';
+  var sel = document.getElementById('cFornecedorSelect');
+  if(sel) sel.value='';
   document.getElementById('cObs').value='';
   selectedPaymentCompra='Dinheiro';
   document.querySelectorAll('#formCompraScreen .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
@@ -1043,6 +1074,47 @@ function novaCompraForm(){
   document.getElementById('formCompraScreen').style.display='block';
   document.getElementById('successCompraScreen').style.display='none';
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ---------- Fornecedores (lista suspensa + adicionar novo) ---------- */
+var fornecedoresCarregados = [];
+function carregarFornecedores(){
+  jsonpCall('listarFornecedores', {}).then(function(d){
+    fornecedoresCarregados = (d && d.ok && d.fornecedores) ? d.fornecedores : [];
+    renderFornecedorSelect();
+  }).catch(function(){});
+}
+function renderFornecedorSelect(){
+  var sel = document.getElementById('cFornecedorSelect');
+  if(!sel) return;
+  var atual = sel.value;
+  sel.innerHTML = '<option value="">Selecione o fornecedor...</option>' +
+    fornecedoresCarregados.map(function(f){
+      var esc = f.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      return '<option value="'+esc+'">'+esc+'</option>';
+    }).join('') +
+    '<option value="__novo__">+ Novo fornecedor...</option>';
+  if(atual && atual!=='__novo__' && fornecedoresCarregados.indexOf(atual)!==-1){ sel.value = atual; }
+}
+function onFornecedorSelectChange(){
+  var sel = document.getElementById('cFornecedorSelect');
+  var novoInput = document.getElementById('cFornecedorNovo');
+  if(sel.value==='__novo__'){
+    novoInput.style.display='block';
+    novoInput.value='';
+    novoInput.focus();
+  } else {
+    novoInput.style.display='none';
+    novoInput.value='';
+  }
+}
+function getFornecedorAtual(){
+  var sel = document.getElementById('cFornecedorSelect');
+  if(!sel) return '';
+  if(sel.value==='__novo__'){
+    return document.getElementById('cFornecedorNovo').value.trim();
+  }
+  return sel.value.trim();
 }
 
 function carregarContasPagar(){
@@ -1212,10 +1284,15 @@ function carregarEstoque(){
       vaziosCard.style.display='none';
     }
     el.innerHTML = d.produtos.map(function(p){
+      var custoLine = '';
+      if(p.custo>0){
+        var margemTxt = (p.preco>p.custo) ? ' &middot; margem: '+fmtR$(p.preco-p.custo)+' ('+Math.round((1-p.custo/p.preco)*100)+'%)' : '';
+        custoLine = '<div class="prod-stock" style="opacity:.8;">Custo: '+fmtR$(p.custo)+margemTxt+'</div>';
+      }
       return '<div class="stock-row">'+
       '<div class="stock-top"><div class="prod-emoji">'+p.emoji+'</div>'+
       '<div class="prod-info"><div class="prod-name">'+p.nome+'</div>'+
-      '<div class="prod-stock'+(p.baixo?' low':'')+'">'+(p.baixo?'&#9888; ':'')+'Estoque: '+p.estoque+' un. (minimo: '+p.estoqueMinimo+')</div></div></div>'+
+      '<div class="prod-stock'+(p.baixo?' low':'')+'">'+(p.baixo?'&#9888; ':'')+'Estoque: '+p.estoque+' un. (minimo: '+p.estoqueMinimo+')</div>'+custoLine+'</div></div>'+
       '<div class="stock-actions">'+
       '<button class="btn btn-primary" onclick="promptEntrada('+p.id+',\''+p.nome.replace(/'/g,"")+'\')">+ Entrada</button>'+
       '<button class="btn btn-outline" onclick="promptAjuste('+p.id+',\''+p.nome.replace(/'/g,"")+'\','+p.estoque+')">Ajustar</button>'+
