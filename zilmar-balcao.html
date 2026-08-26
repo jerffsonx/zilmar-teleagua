@@ -39,6 +39,8 @@ header{padding:20px;text-align:center;}
 .modal-title{font-family:"Syne",sans-serif;font-weight:800;font-size:18px;color:var(--accent2);margin-bottom:10px;}
 .modal-msg{font-size:14px;color:var(--text);margin-bottom:14px;white-space:pre-line;line-height:1.4;}
 .modal-input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:16px;margin-bottom:16px;font-family:inherit;}
+.modal-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.modal-choices .pay-opt{margin:0;}
 .modal-actions{display:flex;gap:10px;}
 .modal-actions .btn{flex:1;}
 
@@ -148,6 +150,8 @@ select option{background:var(--card);}
 
 .fiado-hint{background:rgba(255,215,64,.08);border:1px dashed var(--accent2);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:12px;display:none;}
 .fiado-hint strong{color:var(--accent2);}
+.warn-banner{background:rgba(255,107,107,.1);border:1px solid var(--bad);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px;display:none;}
+.warn-banner strong{color:var(--bad);}
 
 #printArea{display:none;}
 @media print{
@@ -251,7 +255,7 @@ select option{background:var(--card);}
       </div>
 
       <div class="section-title">&#128179; Pagamento</div>
-      <div class="pay-options">
+      <div class="pay-options" id="payOptionsVender">
         <div class="pay-opt selected" onclick="selectPay(this,'Dinheiro')"><div class="pay-opt-icon">&#128181;</div><div class="pay-opt-label">Dinheiro</div></div>
         <div class="pay-opt" onclick="selectPay(this,'PIX')"><div class="pay-opt-icon">&#128241;</div><div class="pay-opt-label">PIX</div></div>
         <div class="pay-opt" onclick="selectPay(this,'Cartao debito')"><div class="pay-opt-icon">&#128179;</div><div class="pay-opt-label">Debito</div></div>
@@ -260,6 +264,12 @@ select option{background:var(--card);}
       </div>
 
       <div class="fiado-hint" id="fiadoHint"><strong>&#129309; Venda fiado:</strong> vai aparecer na aba "Fiado" como pendente ate voce dar baixa quando o cliente pagar. Preencha o nome do cliente.</div>
+
+      <div class="section-title">&#127974; Conta (onde o dinheiro fica)</div>
+      <div class="pay-options" id="contaOptionsVender" style="grid-template-columns:1fr 1fr;">
+        <div class="pay-opt selected" onclick="selectConta(this,'Caixa')"><div class="pay-opt-icon">&#128181;</div><div class="pay-opt-label">Caixa</div></div>
+        <div class="pay-opt" onclick="selectConta(this,'Conta corrente')"><div class="pay-opt-icon">&#127974;</div><div class="pay-opt-label">Conta corrente</div></div>
+      </div>
 
       <div class="form-group">
         <label>Observacao</label>
@@ -327,6 +337,13 @@ select option{background:var(--card);}
         </div>
       </div>
       <div class="form-group">
+        <label>&#127974; Conta (de onde saiu o dinheiro)</label>
+        <select id="dConta">
+          <option value="Caixa">Caixa</option>
+          <option value="Conta corrente">Conta corrente</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label>Observacao</label>
         <input type="text" id="dObs" placeholder="Opcional..."/>
       </div>
@@ -344,6 +361,13 @@ select option{background:var(--card);}
   <!-- ===================== TAB: CAIXA ===================== -->
   <div class="tab-panel" id="tabCaixa">
     <button class="btn btn-outline btn-sm" onclick="imprimirResumoDia()" style="margin-bottom:14px;">&#128424; Imprimir resumo do dia</button>
+
+    <div class="pay-options" id="contaOptionsCaixa" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+      <div class="pay-opt selected" onclick="selecionarContaCaixa('Caixa',this)"><div class="pay-opt-icon">&#128181;</div><div class="pay-opt-label">Caixa (dinheiro c/ funcionario)</div></div>
+      <div class="pay-opt" onclick="selecionarContaCaixa('Conta corrente',this)"><div class="pay-opt-icon">&#127974;</div><div class="pay-opt-label">Conta corrente</div></div>
+    </div>
+
+    <button class="btn btn-outline btn-sm" onclick="promptTransferir()" style="margin-bottom:14px;">&#8646; Transferir entre Caixa e Conta corrente</button>
 
     <div class="period-tabs" id="periodTabs">
       <div class="period-btn active" onclick="selecionarPeriodo('hoje',this)">Hoje</div>
@@ -370,11 +394,15 @@ select option{background:var(--card);}
         <div class="stat-val pos" id="caixaRecebido">R$ 0,00</div>
       </div>
       <div class="stat-card">
+        <div class="stat-lbl">Transferencias no periodo</div>
+        <div class="stat-val" id="caixaTransferencias">R$ 0,00</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-lbl">Saldo do periodo</div>
         <div class="stat-val" id="caixaSaldoPeriodo">R$ 0,00</div>
       </div>
       <div class="stat-card">
-        <div class="stat-lbl">Em caixa (total geral)</div>
+        <div class="stat-lbl" id="lblSaldoAtual">Em caixa (total geral)</div>
         <div class="stat-val accent" id="caixaSaldoAtual">R$ 0,00</div>
       </div>
       <div class="stat-card">
@@ -402,26 +430,30 @@ select option{background:var(--card);}
     <div class="section-title">&#128666; Compras por fornecedor</div>
     <div id="caixaPorFornecedor" class="card"><div class="empty-hint">Carregando...</div></div>
 
-    <div class="section-title">&#128274; Fechamento de caixa</div>
-    <div class="card">
-      <div class="form-group">
-        <label>Data para fechar/reabrir</label>
-        <input type="date" id="fechData"/>
+    <div id="secaoFechamento">
+      <div class="section-title">&#128274; Fechamento de caixa</div>
+      <div class="card">
+        <div class="form-group">
+          <label>Data para fechar/reabrir</label>
+          <input type="date" id="fechData"/>
+        </div>
+        <div class="form-group">
+          <label>Saldo contado (opcional)</label>
+          <input type="number" step="0.01" id="fechSaldoContado" placeholder="Deixe em branco pra usar o calculado"/>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="fecharDia()" style="margin-bottom:8px;">&#128274; Fechar este dia</button>
+        <button class="btn btn-outline btn-sm" onclick="reabrirDia()">&#128275; Reabrir este dia</button>
       </div>
-      <div class="form-group">
-        <label>Saldo contado (opcional)</label>
-        <input type="number" step="0.01" id="fechSaldoContado" placeholder="Deixe em branco pra usar o calculado"/>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="fecharDia()" style="margin-bottom:8px;">&#128274; Fechar este dia</button>
-      <button class="btn btn-outline btn-sm" onclick="reabrirDia()">&#128275; Reabrir este dia</button>
-    </div>
 
-    <div class="section-title">&#128203; Dias fechados recentemente</div>
-    <div id="listaFechamentos" class="card"><div class="empty-hint">Carregando...</div></div>
+      <div class="section-title">&#128203; Dias fechados recentemente</div>
+      <div id="listaFechamentos" class="card"><div class="empty-hint">Carregando...</div></div>
+    </div>
   </div>
 
   <!-- ===================== TAB: ESTOQUE ===================== -->
   <div class="tab-panel" id="tabEstoque">
+    <div class="warn-banner" id="idsDuplicadosWarn"></div>
+
     <div class="card" id="vaziosCard" style="display:none;">
       <div class="toggle-row" style="margin-bottom:0;">
         <div><div class="stat-lbl">&#128167; Garrafoes 20L vazios (aguardando troca)</div>
@@ -484,7 +516,7 @@ select option{background:var(--card);}
       </div>
 
       <div class="section-title">&#128179; Pagamento</div>
-      <div class="pay-options">
+      <div class="pay-options" id="payOptionsCompra">
         <div class="pay-opt selected" onclick="selectPayCompra(this,'Dinheiro')"><div class="pay-opt-icon">&#128181;</div><div class="pay-opt-label">Dinheiro</div></div>
         <div class="pay-opt" onclick="selectPayCompra(this,'PIX')"><div class="pay-opt-icon">&#128241;</div><div class="pay-opt-label">PIX</div></div>
         <div class="pay-opt" onclick="selectPayCompra(this,'Cartao debito')"><div class="pay-opt-icon">&#128179;</div><div class="pay-opt-label">Debito</div></div>
@@ -493,6 +525,12 @@ select option{background:var(--card);}
       </div>
 
       <div class="fiado-hint" id="prazoHint"><strong>&#128197; Compra a prazo:</strong> vai aparecer aqui embaixo como pendente ate voce dar baixa quando pagar o fornecedor. So entao ela sai do seu caixa.</div>
+
+      <div class="section-title">&#127974; Conta (de onde saiu o dinheiro)</div>
+      <div class="pay-options" id="contaOptionsCompra" style="grid-template-columns:1fr 1fr;">
+        <div class="pay-opt selected" onclick="selectContaCompra(this,'Caixa')"><div class="pay-opt-icon">&#128181;</div><div class="pay-opt-label">Caixa</div></div>
+        <div class="pay-opt" onclick="selectContaCompra(this,'Conta corrente')"><div class="pay-opt-icon">&#127974;</div><div class="pay-opt-label">Conta corrente</div></div>
+      </div>
 
       <div class="form-group">
         <label>Observacao</label>
@@ -519,6 +557,11 @@ select option{background:var(--card);}
       <div class="stat-val neg" id="comprasTotalAPagar">R$ 0,00</div>
     </div>
     <div id="listaContasPagar"><div class="empty-hint">Carregando...</div></div>
+
+    <div class="divider"></div>
+    <div class="section-title">&#128203; Compras recentes</div>
+    <div class="fiado-hint">Nao da pra "editar" uma compra ja salva. Se lancou errado, clique em <strong>Cancelar</strong> (devolve o estoque) e lance de novo certinho.</div>
+    <div id="listaComprasRecentes"><div class="empty-hint">Carregando...</div></div>
   </div>
 
 </div>
@@ -540,6 +583,7 @@ select option{background:var(--card);}
   <div class="modal-box">
     <div class="modal-title" id="modalTitle"></div>
     <div class="modal-msg" id="modalMsg"></div>
+    <div class="modal-choices" id="modalChoices" style="display:none;"></div>
     <input type="text" class="modal-input" id="modalInput" style="display:none;"/>
     <div class="modal-actions">
       <button class="btn btn-outline" id="modalCancelBtn" onclick="modalResolve(null)">Cancelar</button>
@@ -551,7 +595,7 @@ select option{background:var(--card);}
 <script>
 var API_URL = 'https://script.google.com/macros/s/AKfycbzz2SFl7Giir4AklAzDr3Whreh2I-59XMte2jTUv8_gTwHqTPkkx7p8mm2yH9dLRF0Hkw/exec';
 var PIN_CORRETO = '1234';
-var cart = {}, selectedPayment = 'Dinheiro';
+var cart = {}, selectedPayment = 'Dinheiro', selectedConta = 'Caixa';
 var produtos = [
   {id:1,emoji:'💧',name:'Galao Agua 20L (sem vasilhame)',price:8.00,estoque:0},
   {id:2,emoji:'💧',name:'Galao Agua 20L (com vasilhame)',price:25.00,estoque:0},
@@ -598,34 +642,64 @@ function jsonpCall(action, params, timeoutMs){
    invasivo. Essas funcoes fazem a mesma coisa com uma caixinha propria
    da pagina, que nunca e bloqueada. */
 var _modalResolver = null;
+var _modalType = null;
 function modalResolve(val){
   document.getElementById('modalOverlay').classList.remove('show');
+  _modalType = null;
   if(_modalResolver){ var r=_modalResolver; _modalResolver=null; r(val); }
 }
 function modalConfirmClick(){
   var input = document.getElementById('modalInput');
+  if(_modalType==='choice'){
+    var v = input.value.trim();
+    if(v) modalResolve(v);
+    return;
+  }
   if(input.style.display!=='none'){ modalResolve(input.value); }
   else { modalResolve(true); }
 }
 function showModal(opts){
   return new Promise(function(resolve){
     _modalResolver = resolve;
+    _modalType = opts.type;
     document.getElementById('modalTitle').textContent = opts.title || '';
     document.getElementById('modalMsg').textContent = opts.message || '';
     var input = document.getElementById('modalInput');
+    var choicesEl = document.getElementById('modalChoices');
     var cancelBtn = document.getElementById('modalCancelBtn');
     var okBtn = document.getElementById('modalOkBtn');
-    if(opts.type==='prompt'){
+    choicesEl.innerHTML = '';
+    choicesEl.style.display = 'none';
+    if(opts.type==='choice'){
+      choicesEl.style.display = 'grid';
+      var htmlChoices = (opts.choices||[]).map(function(c){
+        var jsLit = "'"+String(c).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"'";
+        return '<div class="pay-opt" onclick="modalResolve('+jsLit+')">'+c+'</div>';
+      }).join('');
+      if(opts.allowNew){
+        htmlChoices += '<div class="pay-opt" style="border-style:dashed;" onclick="document.getElementById(\'modalInput\').focus()">+ Nova forma</div>';
+      }
+      choicesEl.innerHTML = htmlChoices;
+      input.style.display = opts.allowNew ? 'block' : 'none';
+      input.placeholder = opts.newPlaceholder || '';
+      input.value = '';
+      cancelBtn.style.display='block';
+      okBtn.style.display = opts.allowNew ? 'block' : 'none';
+      okBtn.textContent='Usar nova';
+    } else if(opts.type==='prompt'){
       input.style.display='block';
+      okBtn.style.display='block';
       input.value = (opts.defaultValue!==undefined && opts.defaultValue!==null) ? opts.defaultValue : '';
       cancelBtn.style.display='block';
       okBtn.textContent='OK';
     } else if(opts.type==='confirm'){
       input.style.display='none';
+      okBtn.style.display='block';
       cancelBtn.style.display='block';
       okBtn.textContent='OK';
     } else {
       input.style.display='none';
+      okBtn.style.display='block';
       cancelBtn.style.display='none';
       okBtn.textContent='OK';
     }
@@ -641,6 +715,19 @@ function customConfirm(message, title){
 }
 function customAlert(message, title){
   return showModal({type:'alert', message:message, title:title||'Aviso'});
+}
+// Modal de "escolher opcao com opcao de adicionar nova" -- usado pra forma de
+// pagamento/recebimento (Dar baixa), reaproveitando o visual dos botoes de
+// forma de pagamento (.pay-opt) ja usados no restante do app.
+function promptEscolha(message, opcoes, title, newPlaceholder, allowNew){
+  if(allowNew===undefined) allowNew=true;
+  return showModal({type:'choice', message:message, title:title||'Escolha uma opcao', choices:opcoes, allowNew:allowNew, newPlaceholder:newPlaceholder||'Digite uma nova opcao'});
+}
+// Modal de escolha de conta (Caixa/Conta corrente) -- sem opcao de
+// adicionar nova (lista fixa), usado no Dar baixa pra capturar em qual
+// conta o dinheiro efetivamente entrou/saiu.
+function promptConta(mensagem, titulo){
+  return promptEscolha(mensagem, ['Caixa','Conta corrente'], titulo||'Conta', '', false);
 }
 document.addEventListener('keydown', function(ev){
   if(ev.key==='Enter' && document.getElementById('modalOverlay').classList.contains('show')){
@@ -672,6 +759,7 @@ function verificarPin(){
       if(d && d.ok){
         if(d.produtos && d.produtos.length>0) produtos = d.produtos;
         if(d.config && d.config.operadores && d.config.operadores.length) operadoresConfig = d.config.operadores;
+        if(d.config && d.config.formasPagamento && d.config.formasPagamento.length) formasPagamentoConfig = d.config.formasPagamento;
       }
       renderVendorButtons();
     }).catch(function(){ renderVendorButtons(); });
@@ -684,7 +772,23 @@ function verificarPin(){
 
 /* ---------- VENDEDOR (quem esta usando o sistema) ---------- */
 var operadoresConfig = ['Geyca','Victor','Junior'];
+var formasPagamentoConfig = ['Dinheiro','PIX','Cartao debito','Cartao credito'];
 var vendedorAtual = '';
+
+// Modal de forma de pagamento/recebimento (Dar baixa), com opcao de
+// adicionar uma nova forma na hora -- a nova forma fica salva (Config) pra
+// aparecer nas proximas vezes tambem.
+async function promptFormaPagamento(mensagem, titulo){
+  var forma = await promptEscolha(mensagem, formasPagamentoConfig, titulo||'Forma de pagamento', 'Ex: Boleto, Deposito...');
+  if(forma===null) return null;
+  forma = forma.trim();
+  if(!forma) return null;
+  if(formasPagamentoConfig.indexOf(forma)===-1){
+    formasPagamentoConfig.push(forma);
+    jsonpCall('adicionarFormaPagamento', {forma:forma}).catch(function(){});
+  }
+  return forma;
+}
 
 function renderVendorButtons(){
   document.getElementById('vendorHint').textContent = 'Selecione seu nome para continuar';
@@ -763,7 +867,7 @@ function renderProdutos(){
     stockLine+'</div>'+
     '<div class="qty-control">'+
     '<button class="qty-btn" onclick="changeQty('+p.id+',-1)">−</button>'+
-    '<input type="number" class="qty-num-input" id="bqty-'+p.id+'" min="0" step="1" inputmode="numeric" value="'+(cart[p.id]||0)+'" onclick="event.stopPropagation()" onchange="setQty('+p.id+',this.value)"/>'+
+    '<input type="number" class="qty-num-input" id="bqty-'+p.id+'" min="0" step="1" inputmode="numeric" value="'+(cart[p.id]||0)+'" onclick="event.stopPropagation()" oninput="setQty('+p.id+',this.value)"/>'+
     '<button class="qty-btn" onclick="changeQty('+p.id+',1)">+</button>'+
     '</div></div>';
   }).join('');
@@ -797,10 +901,14 @@ function atualizarTotal(){
 }
 
 function selectPay(el,label){
-  document.querySelectorAll('#formScreen .pay-opt').forEach(function(o){o.classList.remove('selected');});
+  document.querySelectorAll('#payOptionsVender .pay-opt').forEach(function(o){o.classList.remove('selected');});
   el.classList.add('selected'); selectedPayment=label;
   var hint = document.getElementById('fiadoHint');
   if(hint) hint.style.display = (label==='Fiado') ? 'block' : 'none';
+}
+function selectConta(el,label){
+  document.querySelectorAll('#contaOptionsVender .pay-opt').forEach(function(o){o.classList.remove('selected');});
+  el.classList.add('selected'); selectedConta=label;
 }
 
 /* ---------- BUSCAR CLIENTE PELO TELEFONE (autopreenche nome/endereco) ---------- */
@@ -865,7 +973,8 @@ function salvarPedido(){
     troco: '',
     obs: obs || 'Venda Balcao',
     origem: 'balcao',
-    vendedor: vendedorAtual
+    vendedor: vendedorAtual,
+    conta: selectedConta
   }, 12000).then(function(d){
     btn.disabled=false;
     btn.innerHTML='&#128190; Salvar Venda';
@@ -901,7 +1010,9 @@ function novoPedido(){
   document.getElementById('fObs').value='';
   document.getElementById('clienteHint').style.display='none';
   selectedPayment='Dinheiro';
-  document.querySelectorAll('#formScreen .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
+  selectedConta='Caixa';
+  document.querySelectorAll('#payOptionsVender .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
+  document.querySelectorAll('#contaOptionsVender .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
   var hint = document.getElementById('fiadoHint');
   if(hint) hint.style.display='none';
   carregarProdutos();
@@ -926,18 +1037,20 @@ function sair(){
 var cartCompra = {};
 var precosCompra = {};
 var selectedPaymentCompra = 'Dinheiro';
+var selectedContaCompra = 'Caixa';
 var produtosCompraCarregados = false;
 
-// Lista de "produtos" compraveis: os produtos normais de estoque (menos os
-// dois SKUs de venda do galao, que nao fazem sentido comprar) mais dois
-// itens especiais so do galao 20L: comprar o vasilhame vazio (soma em
-// 'vazios') e pagar pra encher (converte vazios -> cheios).
+// Lista de "produtos" compraveis: os produtos normais de estoque (menos
+// "Agua 20L", que nunca se compra direto — ela so entra via "Encher
+// galoes") mais um item especial so do galao 20L: pagar pra encher (converte
+// "Garrafao 20L vazio" em "Agua 20L"). Comprar um vasilhame vazio NOVO ja e
+// so uma compra normal de "Garrafao 20L vazio" (aparece junto com os outros
+// produtos, sem precisar de item especial).
 function getProdutosCompra(){
   var especiais = [
-    {id:'galaoVazio', tipo:'galaoVazio', emoji:'🧴', name:'Garrafao 20L vazio (vasilhame novo)'},
-    {id:'galaoEncher', tipo:'galaoEncher', emoji:'💧', name:'Agua (encher vazio -> cheio)'}
+    {id:'galaoEncher', tipo:'galaoEncher', emoji:'💧', name:'Encher galoes (vazio vira cheio)'}
   ];
-  var normais = produtos.filter(function(p){ return p.id!==1 && p.id!==2; }).map(function(p){
+  var normais = produtos.filter(function(p){ return p.id!==1; }).map(function(p){
     return {id:p.id, tipo:'produto', emoji:p.emoji, name:p.name};
   });
   return especiais.concat(normais);
@@ -962,7 +1075,7 @@ function renderProdutosCompra(){
     '</div>'+
     '<div class="qty-control">'+
     '<button class="qty-btn" onclick="changeQtyCompra(\''+p.id+'\',-1)">&minus;</button>'+
-    '<input type="number" class="qty-num-input" id="bqtyc-'+p.id+'" min="0" step="1" inputmode="numeric" value="'+(cartCompra[p.id]||0)+'" onclick="event.stopPropagation()" onchange="setQtyCompra(\''+p.id+'\',this.value)"/>'+
+    '<input type="number" class="qty-num-input" id="bqtyc-'+p.id+'" min="0" step="1" inputmode="numeric" value="'+(cartCompra[p.id]||0)+'" onclick="event.stopPropagation()" oninput="setQtyCompra(\''+p.id+'\',this.value)"/>'+
     '<button class="qty-btn" onclick="changeQtyCompra(\''+p.id+'\',1)">+</button>'+
     '</div></div>';
   }).join('');
@@ -997,10 +1110,15 @@ function atualizarTotalCompra(){
 }
 
 function selectPayCompra(el,label){
-  document.querySelectorAll('#formCompraScreen .pay-opt').forEach(function(o){o.classList.remove('selected');});
+  document.querySelectorAll('#payOptionsCompra .pay-opt').forEach(function(o){o.classList.remove('selected');});
   el.classList.add('selected'); selectedPaymentCompra=label;
   var hint = document.getElementById('prazoHint');
   if(hint) hint.style.display = (label==='A prazo') ? 'block' : 'none';
+}
+
+function selectContaCompra(el,label){
+  document.querySelectorAll('#contaOptionsCompra .pay-opt').forEach(function(o){o.classList.remove('selected');});
+  el.classList.add('selected'); selectedContaCompra=label;
 }
 
 function salvarCompra(){
@@ -1027,6 +1145,7 @@ function salvarCompra(){
     itensJson: JSON.stringify(itensArr),
     totalNum: totalNum,
     formaPagamento: selectedPaymentCompra,
+    conta: selectedContaCompra,
     obs: obs,
     vendedor: vendedorAtual
   }, 12000).then(function(d){
@@ -1066,7 +1185,9 @@ function novaCompraForm(){
   if(sel) sel.value='';
   document.getElementById('cObs').value='';
   selectedPaymentCompra='Dinheiro';
-  document.querySelectorAll('#formCompraScreen .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
+  selectedContaCompra='Caixa';
+  document.querySelectorAll('#payOptionsCompra .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
+  document.querySelectorAll('#contaOptionsCompra .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
   var hint = document.getElementById('prazoHint');
   if(hint) hint.style.display='none';
   renderProdutosCompra();
@@ -1133,16 +1254,19 @@ function carregarContasPagar(){
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val neg" style="margin-bottom:6px;">'+fmtR$(c.total)+'</div>'+
       '<button class="btn btn-primary btn-sm" onclick="darBaixaCompraUI(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
+      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarCompraUI(\''+c.id+'\',\''+c.fornecedor.replace(/'/g,"")+'\')">Cancelar</button>'+
       '</div></div>';
     }).join('');
   }).catch(function(){ document.getElementById('listaContasPagar').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
+  carregarComprasRecentes();
 }
 
 async function darBaixaCompraUI(compraId, total){
-  var forma = await customPrompt('Como voce pagou o fornecedor, '+fmtR$(total)+'?\n\nDigite: Dinheiro, PIX, Cartao debito ou Cartao credito', 'Dinheiro', 'Dar baixa');
-  if(forma===null) return;
-  forma = forma.trim() || 'Dinheiro';
-  jsonpCall('darBaixaCompra', {compraId: compraId, formaPagamento: forma, vendedor: vendedorAtual}).then(function(d){
+  var forma = await promptFormaPagamento('Como voce pagou o fornecedor, '+fmtR$(total)+'?', 'Dar baixa');
+  if(!forma) return;
+  var conta = await promptConta('De qual conta saiu o dinheiro?', 'Dar baixa');
+  if(!conta) return;
+  jsonpCall('darBaixaCompra', {compraId: compraId, formaPagamento: forma, conta: conta, vendedor: vendedorAtual}).then(function(d){
     if(d && d.ok){
       carregarContasPagar();
       tabsCarregadas.Caixa=false;
@@ -1150,6 +1274,47 @@ async function darBaixaCompraUI(compraId, total){
       customAlert(d && d.erro ? d.erro : 'Erro ao dar baixa.');
     }
   }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
+// Nao existe "editar" uma compra ja salva -- o caminho e cancelar (o que
+// devolve o estoque que ela tinha somado e tira ela do caixa/a-pagar) e
+// lancar uma nova, certinha, no lugar.
+async function cancelarCompraUI(compraId, fornecedor){
+  var ok = await customConfirm('Cancelar a compra de "'+fornecedor+'"?\n\nIsso devolve/desfaz o estoque que essa compra tinha somado e tira ela do caixa (se ja estava paga) ou do "a pagar" (se ainda estava pendente). Depois e so lancar a compra de novo, certinha.', 'Cancelar compra');
+  if(!ok) return;
+  jsonpCall('cancelarCompra', {compraId: compraId, vendedor: vendedorAtual}).then(function(d){
+    if(d && d.ok){
+      carregarContasPagar();
+      carregarEstoque();
+      tabsCarregadas.Caixa=false;
+    } else {
+      customAlert(d && d.erro ? d.erro : 'Erro ao cancelar.');
+    }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
+function carregarComprasRecentes(){
+  jsonpCall('listarCompras', {}).then(function(d){
+    var el = document.getElementById('listaComprasRecentes');
+    if(!el) return;
+    if(!d || !d.ok || !d.compras || !d.compras.length){
+      el.innerHTML = '<div class="empty-hint">Nenhuma compra registrada ainda.</div>';
+      return;
+    }
+    var recentes = d.compras.slice(0, 15);
+    el.innerHTML = recentes.map(function(c){
+      var statusTxt = c.statusPagamento==='cancelada' ? '<span style="opacity:.6;">Cancelada</span>' : (c.statusPagamento==='pendente' ? 'Pendente' : 'Paga ('+(c.formaPagamento||'')+')');
+      var btnCancelar = c.statusPagamento==='cancelada' ? '' : '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarCompraUI(\''+c.id+'\',\''+c.fornecedor.replace(/'/g,"")+'\')">Cancelar</button>';
+      return '<div class="list-item" style="align-items:flex-start;'+(c.statusPagamento==='cancelada'?'opacity:.55;':'')+'">'+
+      '<div class="li-main"><div class="li-title">'+c.fornecedor+'</div>'+
+      '<div class="li-sub">'+c.dataHora+' &middot; '+statusTxt+'</div>'+
+      '<div class="li-sub">'+c.itens+'</div></div>'+
+      '<div style="text-align:right;flex-shrink:0;">'+
+      '<div class="li-val">'+fmtR$(c.total)+'</div>'+
+      btnCancelar+
+      '</div></div>';
+    }).join('');
+  }).catch(function(){});
 }
 
 /* ---------- DESPESAS ---------- */
@@ -1172,6 +1337,7 @@ function salvarDespesa(){
     valor: valor,
     categoria: document.getElementById('dCategoria').value,
     formaPagamento: document.getElementById('dPagamento').value,
+    conta: document.getElementById('dConta').value,
     obs: document.getElementById('dObs').value.trim(),
     data: data,
     vendedor: vendedorAtual
@@ -1182,6 +1348,7 @@ function salvarDespesa(){
       document.getElementById('dValor').value='';
       document.getElementById('dObs').value='';
       document.getElementById('dData').value = hojeISO();
+      document.getElementById('dConta').value = 'Caixa';
       document.getElementById('formDespesa').classList.remove('open');
       carregarDespesas('hoje');
       tabsCarregadas.Caixa=false;
@@ -1210,11 +1377,40 @@ function carregarDespesas(periodo){
 
 /* ---------- CAIXA ---------- */
 var periodoAtual = 'hoje';
+var contaAtualCaixa = 'Caixa';
+function selecionarContaCaixa(conta, el){
+  contaAtualCaixa = conta;
+  document.querySelectorAll('#contaOptionsCaixa .pay-opt').forEach(function(o){o.classList.remove('selected');});
+  el.classList.add('selected');
+  document.getElementById('lblSaldoAtual').textContent = conta==='Conta corrente' ? 'Em conta corrente (total geral)' : 'Em caixa (total geral)';
+  document.getElementById('secaoFechamento').style.display = conta==='Conta corrente' ? 'none' : 'block';
+  carregarCaixa(periodoAtual);
+}
 function selecionarPeriodo(p, el){
   periodoAtual = p;
   document.querySelectorAll('#periodTabs .period-btn').forEach(function(b){b.classList.remove('active');});
   el.classList.add('active');
   carregarCaixa(p);
+}
+
+async function promptTransferir(){
+  var origem = contaAtualCaixa;
+  var destino = origem==='Caixa' ? 'Conta corrente' : 'Caixa';
+  var ok = await customConfirm('Transferir dinheiro de "'+origem+'" para "'+destino+'"?\n\n(Pra transferir na outra direcao, troque a conta selecionada acima primeiro.)', 'Transferir');
+  if(!ok) return;
+  var valorStr = await customPrompt('Valor a transferir (R$):', '', 'Transferir');
+  if(valorStr===null) return;
+  var valor = parseFloat(String(valorStr).replace(',','.'));
+  if(!valor || valor<=0){ customAlert('Valor invalido.'); return; }
+  var obs = await customPrompt('Observacao (opcional):', '', 'Transferir');
+  jsonpCall('transferirEntreContas', {valor:valor, contaOrigem:origem, contaDestino:destino, obs:obs||'', vendedor:vendedorAtual}).then(function(d){
+    if(d && d.ok){
+      customAlert('Transferencia registrada!');
+      carregarCaixa(periodoAtual);
+    } else {
+      customAlert(d && d.erro ? d.erro : 'Erro ao transferir.');
+    }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
 function carregarCaixa(periodo){
@@ -1223,13 +1419,17 @@ function carregarCaixa(periodo){
   else if(periodo==='7dias') inicio = isoMenosDias(7);
   else if(periodo==='mes') inicio = isoInicioMes();
   else inicio = '';
-  jsonpCall('getResumoCaixa', {inicio:inicio, fim: periodo==='tudo' ? '' : hojeISO()}).then(function(d){
+  jsonpCall('getResumoCaixa', {inicio:inicio, fim: periodo==='tudo' ? '' : hojeISO(), conta: contaAtualCaixa}).then(function(d){
     if(!d || !d.ok) return;
     var per = d.periodo, ger = d.geral;
     document.getElementById('caixaVendas').textContent = fmtR$(per.vendas);
     document.getElementById('caixaDespesas').textContent = fmtR$(per.despesas);
     document.getElementById('caixaComprasPago').textContent = fmtR$(per.comprasPago);
     document.getElementById('caixaRecebido').textContent = fmtR$(per.recebido);
+    var transfLiquido = (per.transferenciasEntrada||0) - (per.transferenciasSaida||0);
+    var transfEl = document.getElementById('caixaTransferencias');
+    transfEl.textContent = (transfLiquido>=0?'+':'')+fmtR$(transfLiquido);
+    transfEl.className = 'stat-val '+(transfLiquido>=0?'pos':'neg');
     var saldoEl = document.getElementById('caixaSaldoPeriodo');
     saldoEl.textContent = fmtR$(per.saldo);
     saldoEl.className = 'stat-val '+(per.saldo>=0?'pos':'neg');
@@ -1267,15 +1467,39 @@ function carregarCaixa(periodo){
       return '<div class="list-item"><div class="li-main"><div class="li-title">'+f+'</div></div><div class="li-val neg">-'+fmtR$(per.porFornecedor[f])+'</div></div>';
     }).join('') : '<div class="empty-hint">Sem compras no periodo.</div>';
   }).catch(function(){});
-  initFechData();
-  carregarFechamentos();
+  if(contaAtualCaixa==='Caixa'){
+    initFechData();
+    carregarFechamentos();
+  }
 }
 
 /* ---------- ESTOQUE ---------- */
+// Nomes usados pelo modelo novo de galao 20L (ver Code.gs). Comparacao
+// ignora maiusculas/acentos, entao "Garrafão" bate com "Garrafao".
+var GARRAFAO_NOMES = { vazio: 'Garrafao 20L vazio', quebrado: 'Garrafao quebrado', vencido: 'Garrafao vencido' };
+var estoqueAtualCache = [];
+function normalizarNome(s){
+  return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function acharProdutoPorNome(lista, nome){
+  var alvo = normalizarNome(nome);
+  for(var i=0;i<lista.length;i++){ if(normalizarNome(lista[i].nome)===alvo) return lista[i]; }
+  return null;
+}
+
 function carregarEstoque(){
   jsonpCall('getEstoque', {}).then(function(d){
     var el = document.getElementById('listaEstoque');
     if(!d || !d.ok || !d.produtos){ el.innerHTML='<div class="empty-hint">Erro ao carregar estoque.</div>'; return; }
+    estoqueAtualCache = d.produtos;
+    var warnEl = document.getElementById('idsDuplicadosWarn');
+    if(d.idsDuplicados && d.idsDuplicados.length){
+      warnEl.style.display='block';
+      warnEl.innerHTML = '<strong>&#9888; Atencao:</strong> encontrei produto(s) com o mesmo ID cadastrado duas vezes na planilha (aba Produtos) &mdash; isso faz o estoque, custo e quantidade de um se misturar com o outro. Corrija a coluna "id" pra cada produto ter um numero unico:<br>' +
+        d.idsDuplicados.map(function(x){ return '&bull; ID '+x.id+': '+x.nomes.join(' e '); }).join('<br>');
+    } else {
+      warnEl.style.display='none';
+    }
     var vaziosCard = document.getElementById('vaziosCard');
     if(d.vaziosGaloes>0){
       vaziosCard.style.display='block';
@@ -1289,6 +1513,14 @@ function carregarEstoque(){
         var margemTxt = (p.preco>p.custo) ? ' &middot; margem: '+fmtR$(p.preco-p.custo)+' ('+Math.round((1-p.custo/p.preco)*100)+'%)' : '';
         custoLine = '<div class="prod-stock" style="opacity:.8;">Custo: '+fmtR$(p.custo)+margemTxt+'</div>';
       }
+      var nomeNorm = normalizarNome(p.nome);
+      var extraBtns = '';
+      if(nomeNorm===normalizarNome(GARRAFAO_NOMES.vazio)){
+        extraBtns = '<button class="btn btn-outline" onclick="promptTransferirGarrafao('+p.id+',\'quebrado\')">Marcar quebrado</button>'+
+                    '<button class="btn btn-outline" onclick="promptTransferirGarrafao('+p.id+',\'vencido\')">Marcar vencido</button>';
+      } else if(nomeNorm===normalizarNome(GARRAFAO_NOMES.quebrado) || nomeNorm===normalizarNome(GARRAFAO_NOMES.vencido)){
+        extraBtns = '<button class="btn btn-outline" onclick="promptTransferirGarrafao('+p.id+',\'vazio\')">&#9850; Recuperar (voltar pra vazio)</button>';
+      }
       return '<div class="stock-row">'+
       '<div class="stock-top"><div class="prod-emoji">'+p.emoji+'</div>'+
       '<div class="prod-info"><div class="prod-name">'+p.nome+'</div>'+
@@ -1296,6 +1528,7 @@ function carregarEstoque(){
       '<div class="stock-actions">'+
       '<button class="btn btn-primary" onclick="promptEntrada('+p.id+',\''+p.nome.replace(/'/g,"")+'\')">+ Entrada</button>'+
       '<button class="btn btn-outline" onclick="promptAjuste('+p.id+',\''+p.nome.replace(/'/g,"")+'\','+p.estoque+')">Ajustar</button>'+
+      extraBtns+
       '</div></div>';
     }).join('');
   }).catch(function(){ document.getElementById('listaEstoque').innerHTML='<div class="empty-hint">Erro ao carregar estoque.</div>'; });
@@ -1351,6 +1584,19 @@ async function promptAjuste(id, nome, atual){
   }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
+async function promptTransferirGarrafao(origemId, destinoTipo){
+  var destinoNome = GARRAFAO_NOMES[destinoTipo];
+  var destinoProd = acharProdutoPorNome(estoqueAtualCache, destinoNome);
+  if(!destinoProd){ customAlert('Nao encontrei o produto "'+destinoNome+'" no estoque. Confira se ele esta cadastrado na aba Produtos com esse nome.'); return; }
+  var qtd = await customPrompt('Quantos garrafoes mover para "'+destinoNome+'"?', '', 'Transferir garrafao');
+  if(qtd===null) return;
+  qtd = parseInt(qtd,10);
+  if(!qtd || qtd<=0){ customAlert('Quantidade invalida.'); return; }
+  jsonpCall('transferirEstoqueProduto', {origemId:origemId, destinoId:destinoProd.id, quantidade:qtd, vendedor:vendedorAtual}).then(function(d){
+    if(d && d.ok){ carregarEstoque(); } else { customAlert(d && d.erro ? d.erro : 'Erro ao transferir.'); }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
 async function promptReabastecer(){
   var vaziosAtual = parseInt(document.getElementById('vaziosQtd').textContent,10) || 0;
   var qtd = await customPrompt('Quantos garrafoes vazios voce esta trocando por cheios agora? (disponivel: '+vaziosAtual+')', vaziosAtual, 'Trocar por cheios');
@@ -1385,10 +1631,11 @@ function carregarFiado(){
 }
 
 async function darBaixa(vendaId, total){
-  var forma = await customPrompt('Como foi recebido o pagamento de '+fmtR$(total)+'?\n\nDigite: Dinheiro, PIX, Cartao debito ou Cartao credito', 'Dinheiro', 'Dar baixa');
-  if(forma===null) return;
-  forma = forma.trim() || 'Dinheiro';
-  jsonpCall('darBaixaFiado', {vendaId: vendaId, formaRecebimento: forma, vendedor: vendedorAtual}).then(function(d){
+  var forma = await promptFormaPagamento('Como foi recebido o pagamento de '+fmtR$(total)+'?', 'Dar baixa');
+  if(!forma) return;
+  var conta = await promptConta('Em qual conta o dinheiro entrou?', 'Dar baixa');
+  if(!conta) return;
+  jsonpCall('darBaixaFiado', {vendaId: vendaId, formaRecebimento: forma, conta: conta, vendedor: vendedorAtual}).then(function(d){
     if(d && d.ok){
       carregarFiado();
       tabsCarregadas.Caixa=false;
