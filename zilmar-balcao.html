@@ -31,6 +31,17 @@ header{padding:20px;text-align:center;}
 .vendor-btn:active{background:var(--accent);color:#000;}
 .vendor-btn.outline{background:transparent;border:1px dashed var(--border);color:var(--muted);font-weight:500;font-size:13px;}
 
+/* MODAL (substitui prompt/confirm/alert nativos do navegador, que alguns
+   celulares bloqueiam por engano achando que e propaganda/popup) */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.5);}
+.modal-title{font-family:"Syne",sans-serif;font-weight:800;font-size:18px;color:var(--accent2);margin-bottom:10px;}
+.modal-msg{font-size:14px;color:var(--text);margin-bottom:14px;white-space:pre-line;line-height:1.4;}
+.modal-input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:16px;margin-bottom:16px;font-family:inherit;}
+.modal-actions{display:flex;gap:10px;}
+.modal-actions .btn{flex:1;}
+
 /* APP */
 .app-wrap{max-width:480px;margin:0 auto;padding:0 16px 96px;}
 .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
@@ -452,6 +463,18 @@ select option{background:var(--card);}
 
 <div id="printArea"></div>
 
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-msg" id="modalMsg"></div>
+    <input type="text" class="modal-input" id="modalInput" style="display:none;"/>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="modalCancelBtn" onclick="modalResolve(null)">Cancelar</button>
+      <button class="btn btn-primary" id="modalOkBtn" onclick="modalConfirmClick()">OK</button>
+    </div>
+  </div>
+</div>
+
 <script>
 var API_URL = 'https://script.google.com/macros/s/AKfycbzz2SFl7Giir4AklAzDr3Whreh2I-59XMte2jTUv8_gTwHqTPkkx7p8mm2yH9dLRF0Hkw/exec';
 var PIN_CORRETO = '1234';
@@ -495,6 +518,62 @@ function jsonpCall(action, params, timeoutMs){
     document.body.appendChild(s);
   });
 }
+
+/* ---------- MODAL (substitui prompt/confirm/alert nativos) ----------
+   Alguns navegadores/celulares bloqueiam silenciosamente as caixinhas
+   nativas do JavaScript (prompt/confirm/alert), tratando como popup
+   invasivo. Essas funcoes fazem a mesma coisa com uma caixinha propria
+   da pagina, que nunca e bloqueada. */
+var _modalResolver = null;
+function modalResolve(val){
+  document.getElementById('modalOverlay').classList.remove('show');
+  if(_modalResolver){ var r=_modalResolver; _modalResolver=null; r(val); }
+}
+function modalConfirmClick(){
+  var input = document.getElementById('modalInput');
+  if(input.style.display!=='none'){ modalResolve(input.value); }
+  else { modalResolve(true); }
+}
+function showModal(opts){
+  return new Promise(function(resolve){
+    _modalResolver = resolve;
+    document.getElementById('modalTitle').textContent = opts.title || '';
+    document.getElementById('modalMsg').textContent = opts.message || '';
+    var input = document.getElementById('modalInput');
+    var cancelBtn = document.getElementById('modalCancelBtn');
+    var okBtn = document.getElementById('modalOkBtn');
+    if(opts.type==='prompt'){
+      input.style.display='block';
+      input.value = (opts.defaultValue!==undefined && opts.defaultValue!==null) ? opts.defaultValue : '';
+      cancelBtn.style.display='block';
+      okBtn.textContent='OK';
+    } else if(opts.type==='confirm'){
+      input.style.display='none';
+      cancelBtn.style.display='block';
+      okBtn.textContent='OK';
+    } else {
+      input.style.display='none';
+      cancelBtn.style.display='none';
+      okBtn.textContent='OK';
+    }
+    document.getElementById('modalOverlay').classList.add('show');
+    setTimeout(function(){ if(input.style.display!=='none') input.focus(); }, 50);
+  });
+}
+function customPrompt(message, defaultValue, title){
+  return showModal({type:'prompt', message:message, defaultValue:defaultValue, title:title||'Digite abaixo'});
+}
+function customConfirm(message, title){
+  return showModal({type:'confirm', message:message, title:title||'Confirmar'}).then(function(v){ return !!v; });
+}
+function customAlert(message, title){
+  return showModal({type:'alert', message:message, title:title||'Aviso'});
+}
+document.addEventListener('keydown', function(ev){
+  if(ev.key==='Enter' && document.getElementById('modalOverlay').classList.contains('show')){
+    modalConfirmClick();
+  }
+});
 
 /* ---------- PIN ---------- */
 var pinAtual = '';
@@ -547,8 +626,8 @@ function escolherVendedor(nome){
   entrarNoApp();
 }
 
-function escolherVendedorOutro(){
-  var nome = prompt('Digite seu nome:');
+async function escolherVendedorOutro(){
+  var nome = await customPrompt('Digite seu nome:', '', 'Quem esta vendendo?');
   if(!nome || !nome.trim()) return;
   vendedorAtual = nome.trim();
   entrarNoApp();
@@ -670,9 +749,9 @@ function salvarPedido(){
   var end  = document.getElementById('fEnd').value.trim() || 'Balcao';
   var obs  = document.getElementById('fObs').value.trim();
 
-  if(!Object.keys(cart).length){ alert('Adicione pelo menos um produto!'); return; }
+  if(!Object.keys(cart).length){ customAlert('Adicione pelo menos um produto!'); return; }
   if(selectedPayment==='Fiado' && (!document.getElementById('fNome').value.trim())){
-    alert('Para venda fiado, informe o nome do cliente (quem esta devendo).');
+    customAlert('Para venda fiado, informe o nome do cliente (quem esta devendo).');
     return;
   }
 
@@ -708,11 +787,11 @@ function salvarPedido(){
     if(d && d.ok){
       mostrarSucesso(d.id, nome, total, itensArr);
     } else {
-      alert(d && d.erro ? d.erro : 'Erro ao salvar. Tente novamente.');
+      customAlert(d && d.erro ? d.erro : 'Erro ao salvar. Tente novamente.');
     }
   }).catch(function(e){
     btn.disabled=false; btn.innerHTML='&#128190; Salvar Venda';
-    alert(e.message==='Tempo esgotado' ? 'Tempo esgotado. Tente novamente.' : 'Erro de conexao. Verifique a internet.');
+    customAlert(e.message==='Tempo esgotado' ? 'Tempo esgotado. Tente novamente.' : 'Erro de conexao. Verifique a internet.');
   });
 }
 
@@ -769,8 +848,8 @@ function salvarDespesa(){
   var desc = document.getElementById('dDesc').value.trim();
   var valor = parseFloat(document.getElementById('dValor').value);
   var data = document.getElementById('dData').value || hojeISO();
-  if(!desc){ alert('Descreva a despesa.'); return; }
-  if(!valor || valor<=0){ alert('Informe um valor valido.'); return; }
+  if(!desc){ customAlert('Descreva a despesa.'); return; }
+  if(!valor || valor<=0){ customAlert('Informe um valor valido.'); return; }
   var btn = document.getElementById('btnSalvarDespesa');
   btn.disabled=true; btn.innerHTML='<div class="spinner"></div> Salvando...';
   jsonpCall('registrarDespesa', {
@@ -791,8 +870,8 @@ function salvarDespesa(){
       document.getElementById('formDespesa').classList.remove('open');
       carregarDespesas('hoje');
       tabsCarregadas.Caixa=false;
-    } else { alert(d && d.erro ? d.erro : 'Erro ao salvar despesa.'); }
-  }).catch(function(){ btn.disabled=false; btn.innerHTML='&#128190; Salvar Despesa'; alert('Erro de conexao.'); });
+    } else { customAlert(d && d.erro ? d.erro : 'Erro ao salvar despesa.'); }
+  }).catch(function(){ btn.disabled=false; btn.innerHTML='&#128190; Salvar Despesa'; customAlert('Erro de conexao.'); });
 }
 
 function carregarDespesas(periodo){
@@ -906,53 +985,53 @@ function carregarPerdasGaloes(){
   }).catch(function(){});
 }
 
-function promptPerdaGalao(tipo){
+async function promptPerdaGalao(tipo){
   var label = tipo==='vencimento' ? 'vencimento (agua vencida)' : 'quebra (vasilhame quebrado/rachado)';
-  var qtd = prompt('Quantos garrafoes de 20L tiveram '+label+' agora?');
+  var qtd = await customPrompt('Quantos garrafoes de 20L tiveram '+label+' agora?', '', 'Registrar perda');
   if(qtd===null) return;
   qtd = parseInt(qtd,10);
-  if(!qtd || qtd<=0){ alert('Quantidade invalida.'); return; }
-  var origemResp = prompt('Esses garrafoes estavam CHEIOS ou VAZIOS na hora da perda?\n\nDigite: cheio ou vazio', 'cheio');
+  if(!qtd || qtd<=0){ customAlert('Quantidade invalida.'); return; }
+  var origemResp = await customPrompt('Esses garrafoes estavam CHEIOS ou VAZIOS na hora da perda?\n\nDigite: cheio ou vazio', 'cheio', 'Registrar perda');
   if(origemResp===null) return;
   var origem = origemResp.trim().toLowerCase().indexOf('vaz')>-1 ? 'vazio' : 'cheio';
   var recuperado = false;
   if(origem==='cheio'){
-    recuperado = confirm('O vasilhame (o garrafao em si) continua bom pra reaproveitar depois de lavado (volta pro estoque como vazio, pronto pra encher de novo)?\n\nOK = sim, guardar o vasilhame\nCancelar = nao, o vasilhame tambem foi perdido');
+    recuperado = await customConfirm('O vasilhame (o garrafao em si) continua bom pra reaproveitar depois de lavado (volta pro estoque como vazio, pronto pra encher de novo)?\n\nOK = sim, guardar o vasilhame\nCancelar = nao, o vasilhame tambem foi perdido');
   }
   jsonpCall('registrarPerdaGalao', {quantidade:qtd, tipoPerda:tipo, origem:origem, recuperado:recuperado?1:0, vendedor:vendedorAtual}).then(function(d){
-    if(d && d.ok){ carregarEstoque(); } else { alert(d && d.erro ? d.erro : 'Erro ao registrar a perda.'); }
-  }).catch(function(){ alert('Erro de conexao.'); });
+    if(d && d.ok){ carregarEstoque(); } else { customAlert(d && d.erro ? d.erro : 'Erro ao registrar a perda.'); }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
-function promptEntrada(id, nome){
-  var qtd = prompt('Quantas unidades de "'+nome+'" chegaram?');
+async function promptEntrada(id, nome){
+  var qtd = await customPrompt('Quantas unidades de "'+nome+'" chegaram?', '', 'Entrada de estoque');
   if(qtd===null) return;
   qtd = parseInt(qtd,10);
-  if(!qtd || qtd<=0){ alert('Quantidade invalida.'); return; }
+  if(!qtd || qtd<=0){ customAlert('Quantidade invalida.'); return; }
   jsonpCall('entradaEstoque', {produtoId:id, quantidade:qtd, obs:'Entrada manual', vendedor:vendedorAtual}).then(function(d){
-    if(d && d.ok){ carregarEstoque(); } else { alert(d && d.erro ? d.erro : 'Erro ao registrar entrada.'); }
-  }).catch(function(){ alert('Erro de conexao.'); });
+    if(d && d.ok){ carregarEstoque(); } else { customAlert(d && d.erro ? d.erro : 'Erro ao registrar entrada.'); }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
-function promptAjuste(id, nome, atual){
-  var novo = prompt('Quantidade correta em estoque de "'+nome+'" (contagem manual):', atual);
+async function promptAjuste(id, nome, atual){
+  var novo = await customPrompt('Quantidade correta em estoque de "'+nome+'" (contagem manual):', atual, 'Ajustar estoque');
   if(novo===null) return;
   novo = parseInt(novo,10);
-  if(isNaN(novo) || novo<0){ alert('Quantidade invalida.'); return; }
+  if(isNaN(novo) || novo<0){ customAlert('Quantidade invalida.'); return; }
   jsonpCall('ajusteEstoque', {produtoId:id, novoValor:novo, motivo:'Ajuste manual (contagem)', vendedor:vendedorAtual}).then(function(d){
-    if(d && d.ok){ carregarEstoque(); } else { alert(d && d.erro ? d.erro : 'Erro ao ajustar estoque.'); }
-  }).catch(function(){ alert('Erro de conexao.'); });
+    if(d && d.ok){ carregarEstoque(); } else { customAlert(d && d.erro ? d.erro : 'Erro ao ajustar estoque.'); }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
-function promptReabastecer(){
+async function promptReabastecer(){
   var vaziosAtual = parseInt(document.getElementById('vaziosQtd').textContent,10) || 0;
-  var qtd = prompt('Quantos garrafoes vazios voce esta trocando por cheios agora? (disponivel: '+vaziosAtual+')', vaziosAtual);
+  var qtd = await customPrompt('Quantos garrafoes vazios voce esta trocando por cheios agora? (disponivel: '+vaziosAtual+')', vaziosAtual, 'Trocar por cheios');
   if(qtd===null) return;
   qtd = parseInt(qtd,10);
-  if(!qtd || qtd<=0){ alert('Quantidade invalida.'); return; }
+  if(!qtd || qtd<=0){ customAlert('Quantidade invalida.'); return; }
   jsonpCall('reabastecerGaloes', {quantidade:qtd, vendedor:vendedorAtual}).then(function(d){
-    if(d && d.ok){ carregarEstoque(); } else { alert(d && d.erro ? d.erro : 'Erro ao trocar garrafoes.'); }
-  }).catch(function(){ alert('Erro de conexao.'); });
+    if(d && d.ok){ carregarEstoque(); } else { customAlert(d && d.erro ? d.erro : 'Erro ao trocar garrafoes.'); }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
 /* ---------- FIADO / A RECEBER ---------- */
@@ -977,8 +1056,8 @@ function carregarFiado(){
   }).catch(function(){ document.getElementById('listaFiado').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
 }
 
-function darBaixa(vendaId, total){
-  var forma = prompt('Como foi recebido o pagamento de '+fmtR$(total)+'?\n\nDigite: Dinheiro, PIX, Cartao debito ou Cartao credito', 'Dinheiro');
+async function darBaixa(vendaId, total){
+  var forma = await customPrompt('Como foi recebido o pagamento de '+fmtR$(total)+'?\n\nDigite: Dinheiro, PIX, Cartao debito ou Cartao credito', 'Dinheiro', 'Dar baixa');
   if(forma===null) return;
   forma = forma.trim() || 'Dinheiro';
   jsonpCall('darBaixaFiado', {vendaId: vendaId, formaRecebimento: forma, vendedor: vendedorAtual}).then(function(d){
@@ -986,9 +1065,9 @@ function darBaixa(vendaId, total){
       carregarFiado();
       tabsCarregadas.Caixa=false;
     } else {
-      alert(d && d.erro ? d.erro : 'Erro ao dar baixa.');
+      customAlert(d && d.erro ? d.erro : 'Erro ao dar baixa.');
     }
-  }).catch(function(){ alert('Erro de conexao.'); });
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
 /* ---------- FECHAMENTO DE CAIXA ---------- */
@@ -997,36 +1076,36 @@ function initFechData(){
   if(el && !el.value) el.value = hojeISO();
 }
 
-function fecharDia(){
+async function fecharDia(){
   var data = document.getElementById('fechData').value;
-  if(!data){ alert('Escolha a data para fechar.'); return; }
+  if(!data){ customAlert('Escolha a data para fechar.'); return; }
   var saldoContado = document.getElementById('fechSaldoContado').value;
-  var senha = prompt('Digite a senha de administrador para FECHAR o dia '+data+':');
+  var senha = await customPrompt('Digite a senha de administrador para FECHAR o dia '+data+':', '', 'Fechar caixa');
   if(senha===null) return;
   jsonpCall('fecharCaixa', {data:data, senhaAdmin:senha, saldoContado:saldoContado, vendedor:vendedorAtual}).then(function(d){
     if(d && d.ok){
-      alert('Dia '+data+' fechado. Saldo calculado: '+fmtR$(d.saldoCalculado)+(d.diferenca?(' (diferenca: '+fmtR$(d.diferenca)+')'):''));
+      customAlert('Dia '+data+' fechado. Saldo calculado: '+fmtR$(d.saldoCalculado)+(d.diferenca?(' (diferenca: '+fmtR$(d.diferenca)+')'):''));
       document.getElementById('fechSaldoContado').value='';
       carregarFechamentos();
     } else {
-      alert(d && d.erro ? d.erro : 'Erro ao fechar o dia.');
+      customAlert(d && d.erro ? d.erro : 'Erro ao fechar o dia.');
     }
-  }).catch(function(){ alert('Erro de conexao.'); });
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
-function reabrirDia(){
+async function reabrirDia(){
   var data = document.getElementById('fechData').value;
-  if(!data){ alert('Escolha a data para reabrir.'); return; }
-  var senha = prompt('Digite a senha de administrador para REABRIR o dia '+data+':');
+  if(!data){ customAlert('Escolha a data para reabrir.'); return; }
+  var senha = await customPrompt('Digite a senha de administrador para REABRIR o dia '+data+':', '', 'Reabrir caixa');
   if(senha===null) return;
   jsonpCall('reabrirCaixa', {data:data, senhaAdmin:senha, vendedor:vendedorAtual}).then(function(d){
     if(d && d.ok){
-      alert('Dia '+data+' reaberto. Lancamentos liberados novamente.');
+      customAlert('Dia '+data+' reaberto. Lancamentos liberados novamente.');
       carregarFechamentos();
     } else {
-      alert(d && d.erro ? d.erro : 'Erro ao reabrir o dia.');
+      customAlert(d && d.erro ? d.erro : 'Erro ao reabrir o dia.');
     }
-  }).catch(function(){ alert('Erro de conexao.'); });
+  }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
 function carregarFechamentos(){
@@ -1055,7 +1134,7 @@ function imprimirResumoDia(){
   ]).then(function(res){
     montarRelatorioImpressao(res[0], res[1], res[2], res[3]);
     setTimeout(function(){ window.print(); }, 150);
-  }).catch(function(){ alert('Erro ao montar o relatorio.'); });
+  }).catch(function(){ customAlert('Erro ao montar o relatorio.'); });
 }
 
 function montarRelatorioImpressao(resumo, vendasResp, estoqueResp, perdasResp){
