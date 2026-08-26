@@ -361,6 +361,10 @@ select option{background:var(--card);}
         <div class="stat-val neg" id="caixaDespesas">R$ 0,00</div>
       </div>
       <div class="stat-card">
+        <div class="stat-lbl">Compras pagas no periodo</div>
+        <div class="stat-val neg" id="caixaComprasPago">R$ 0,00</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-lbl">Recebido no periodo</div>
         <div class="stat-val pos" id="caixaRecebido">R$ 0,00</div>
       </div>
@@ -376,6 +380,10 @@ select option{background:var(--card);}
         <div class="stat-lbl">A receber (fiado)</div>
         <div class="stat-val" id="caixaAReceber" style="color:var(--accent2)">R$ 0,00</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-lbl">A pagar (fornecedores)</div>
+        <div class="stat-val" id="caixaAPagar" style="color:var(--accent2)">R$ 0,00</div>
+      </div>
     </div>
 
     <div class="section-title">&#128179; Vendas por forma de pagamento</div>
@@ -389,6 +397,9 @@ select option{background:var(--card);}
 
     <div class="section-title">&#128100; Vendas por vendedor</div>
     <div id="caixaPorVendedor" class="card"><div class="empty-hint">Carregando...</div></div>
+
+    <div class="section-title">&#128666; Compras por fornecedor</div>
+    <div id="caixaPorFornecedor" class="card"><div class="empty-hint">Carregando...</div></div>
 
     <div class="section-title">&#128274; Fechamento de caixa</div>
     <div class="card">
@@ -449,12 +460,69 @@ select option{background:var(--card);}
     <div id="listaFiado"><div class="empty-hint">Carregando...</div></div>
   </div>
 
+  <!-- ===================== TAB: COMPRAS / FORNECEDORES ===================== -->
+  <div class="tab-panel" id="tabCompras">
+
+    <div id="formCompraScreen">
+      <div class="form-group">
+        <label>Fornecedor</label>
+        <input type="text" id="cFornecedor" placeholder="Nome do fornecedor"/>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-title">&#128230; Itens comprados</div>
+      <div class="products" id="productListCompra"></div>
+
+      <div class="total-box">
+        <div class="total-label">Total</div>
+        <div class="total-val" id="totalValCompra">R$ 0,00</div>
+      </div>
+
+      <div class="section-title">&#128179; Pagamento</div>
+      <div class="pay-options">
+        <div class="pay-opt selected" onclick="selectPayCompra(this,'Dinheiro')"><div class="pay-opt-icon">&#128181;</div><div class="pay-opt-label">Dinheiro</div></div>
+        <div class="pay-opt" onclick="selectPayCompra(this,'PIX')"><div class="pay-opt-icon">&#128241;</div><div class="pay-opt-label">PIX</div></div>
+        <div class="pay-opt" onclick="selectPayCompra(this,'Cartao debito')"><div class="pay-opt-icon">&#128179;</div><div class="pay-opt-label">Debito</div></div>
+        <div class="pay-opt" onclick="selectPayCompra(this,'Cartao credito')"><div class="pay-opt-icon">&#128176;</div><div class="pay-opt-label">Credito</div></div>
+        <div class="pay-opt" onclick="selectPayCompra(this,'A prazo')"><div class="pay-opt-icon">&#128197;</div><div class="pay-opt-label">A prazo</div></div>
+      </div>
+
+      <div class="fiado-hint" id="prazoHint"><strong>&#128197; Compra a prazo:</strong> vai aparecer aqui embaixo como pendente ate voce dar baixa quando pagar o fornecedor. So entao ela sai do seu caixa.</div>
+
+      <div class="form-group">
+        <label>Observacao</label>
+        <input type="text" id="cObs" placeholder="Opcional..."/>
+      </div>
+
+      <button class="btn btn-primary" id="btnSalvarCompra" onclick="salvarCompra()">&#128190; Salvar Compra</button>
+    </div>
+
+    <div id="successCompraScreen" style="display:none;">
+      <div class="success-wrap">
+        <div class="success-icon">&#10003;&#65039;</div>
+        <div class="success-title">Compra salva!</div>
+        <div class="success-id" id="compraId"></div>
+        <div class="success-sub" id="compraResumo"></div>
+        <button class="btn btn-primary" onclick="novaCompraForm()" style="margin-bottom:10px;">+ Nova Compra</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-title">&#128230; Fornecedores &mdash; contas a pagar</div>
+    <div class="card" style="text-align:center;">
+      <div class="stat-lbl">Total a pagar</div>
+      <div class="stat-val neg" id="comprasTotalAPagar">R$ 0,00</div>
+    </div>
+    <div id="listaContasPagar"><div class="empty-hint">Carregando...</div></div>
+  </div>
+
 </div>
 </div>
 
 <!-- TAB BAR -->
 <div class="tabbar" id="tabbar" style="display:none;">
   <button class="tabbar-btn active" onclick="trocarTab('Vender',this)"><span class="ic">&#128722;</span>Vender</button>
+  <button class="tabbar-btn" onclick="trocarTab('Compras',this)"><span class="ic">&#128666;</span>Compras</button>
   <button class="tabbar-btn" onclick="trocarTab('Despesas',this)"><span class="ic">&#128181;</span>Despesas</button>
   <button class="tabbar-btn" onclick="trocarTab('Caixa',this)"><span class="ic">&#128200;</span>Caixa</button>
   <button class="tabbar-btn" onclick="trocarTab('Estoque',this)"><span class="ic">&#128721;</span>Estoque</button>
@@ -641,7 +709,7 @@ function entrarNoApp(){
 }
 
 /* ---------- TABS ---------- */
-var headings = {Vender:'&#128722; Nova Venda', Despesas:'&#128181; Despesas', Caixa:'&#128200; Caixa', Estoque:'&#128230; Estoque', Fiado:'&#128210; A Receber (Fiado)'};
+var headings = {Vender:'&#128722; Nova Venda', Compras:'&#128666; Compras', Despesas:'&#128181; Despesas', Caixa:'&#128200; Caixa', Estoque:'&#128230; Estoque', Fiado:'&#128210; A Receber (Fiado)'};
 var tabsCarregadas = {};
 function trocarTab(nome, el){
   document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
@@ -654,6 +722,7 @@ function trocarTab(nome, el){
   if(nome==='Caixa' && !tabsCarregadas.Caixa){ tabsCarregadas.Caixa=true; carregarCaixa('hoje'); }
   if(nome==='Estoque'){ carregarEstoque(); }
   if(nome==='Fiado'){ carregarFiado(); }
+  if(nome==='Compras'){ if(!produtosCompraCarregados){ produtosCompraCarregados=true; renderProdutosCompra(); } carregarContasPagar(); }
 }
 
 /* ---------- PRODUTOS / VENDER ---------- */
@@ -837,6 +906,180 @@ function sair(){
   novoPedido();
 }
 
+/* ---------- COMPRAS / FORNECEDORES ---------- */
+var cartCompra = {};
+var precosCompra = {};
+var selectedPaymentCompra = 'Dinheiro';
+var produtosCompraCarregados = false;
+
+// Lista de "produtos" compraveis: os produtos normais de estoque (menos os
+// dois SKUs de venda do galao, que nao fazem sentido comprar) mais dois
+// itens especiais so do galao 20L: comprar o vasilhame vazio (soma em
+// 'vazios') e pagar pra encher (converte vazios -> cheios).
+function getProdutosCompra(){
+  var especiais = [
+    {id:'galaoVazio', tipo:'galaoVazio', emoji:'🧴', name:'Garrafao 20L vazio (vasilhame novo)'},
+    {id:'galaoEncher', tipo:'galaoEncher', emoji:'💧', name:'Agua (encher vazio -> cheio)'}
+  ];
+  var normais = produtos.filter(function(p){ return p.id!==1 && p.id!==2; }).map(function(p){
+    return {id:p.id, tipo:'produto', emoji:p.emoji, name:p.name};
+  });
+  return especiais.concat(normais);
+}
+
+function precoCompraAtual(id){
+  var v = precosCompra[id];
+  return (v!==undefined && v!=='' && !isNaN(Number(v))) ? Number(v) : 0;
+}
+function changePrecoCompra(id, valor){
+  precosCompra[id] = valor;
+  atualizarTotalCompra();
+}
+
+function renderProdutosCompra(){
+  var lista = getProdutosCompra();
+  document.getElementById('productListCompra').innerHTML = lista.map(function(p){
+    return '<div class="prod-row '+(cartCompra[p.id]?'in-cart':'')+'" id="prowc-'+p.id+'">'+
+    '<div class="prod-emoji">'+p.emoji+'</div>'+
+    '<div class="prod-info"><div class="prod-name">'+p.name+'</div>'+
+    '<div class="prod-price-edit"><span>R$</span><input type="number" step="0.01" min="0" inputmode="decimal" class="price-input" placeholder="0,00" value="'+(precoCompraAtual(p.id)||'')+'" onclick="event.stopPropagation()" onchange="changePrecoCompra(\''+p.id+'\',this.value)"/></div>'+
+    '</div>'+
+    '<div class="qty-control">'+
+    '<button class="qty-btn" onclick="changeQtyCompra(\''+p.id+'\',-1)">&minus;</button>'+
+    '<div class="qty-num" id="bqtyc-'+p.id+'">'+(cartCompra[p.id]||0)+'</div>'+
+    '<button class="qty-btn" onclick="changeQtyCompra(\''+p.id+'\',1)">+</button>'+
+    '</div></div>';
+  }).join('');
+}
+
+function changeQtyCompra(id,delta){
+  cartCompra[id]=Math.max(0,(cartCompra[id]||0)+delta);
+  if(!cartCompra[id])delete cartCompra[id];
+  var el=document.getElementById('bqtyc-'+id);
+  if(el) el.textContent=cartCompra[id]||0;
+  var row=document.getElementById('prowc-'+id);
+  if(row) row.classList.toggle('in-cart',!!cartCompra[id]);
+  atualizarTotalCompra();
+}
+
+function getTotalCompra(){
+  return getProdutosCompra().reduce(function(s,p){return s+(cartCompra[p.id]||0)*precoCompraAtual(p.id);},0);
+}
+function atualizarTotalCompra(){
+  document.getElementById('totalValCompra').textContent = fmtR$(getTotalCompra());
+}
+
+function selectPayCompra(el,label){
+  document.querySelectorAll('#formCompraScreen .pay-opt').forEach(function(o){o.classList.remove('selected');});
+  el.classList.add('selected'); selectedPaymentCompra=label;
+  var hint = document.getElementById('prazoHint');
+  if(hint) hint.style.display = (label==='A prazo') ? 'block' : 'none';
+}
+
+function salvarCompra(){
+  var fornecedor = document.getElementById('cFornecedor').value.trim();
+  var obs = document.getElementById('cObs').value.trim();
+  if(!fornecedor){ customAlert('Informe o fornecedor.'); return; }
+  var lista = getProdutosCompra();
+  var itensArr = lista.filter(function(p){return cartCompra[p.id];}).map(function(p){
+    var item = {tipo:p.tipo, nome:p.name, qtd:cartCompra[p.id], precoUnit:precoCompraAtual(p.id)};
+    if(p.tipo==='produto') item.id = p.id;
+    return item;
+  });
+  if(!itensArr.length){ customAlert('Adicione pelo menos um item!'); return; }
+
+  var totalNum = getTotalCompra();
+  if(totalNum<=0){ customAlert('Informe o preco dos itens (o total esta zerado).'); return; }
+
+  var btn = document.getElementById('btnSalvarCompra');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Salvando...';
+
+  jsonpCall('novaCompra', {
+    fornecedor: fornecedor,
+    itensJson: JSON.stringify(itensArr),
+    totalNum: totalNum,
+    formaPagamento: selectedPaymentCompra,
+    obs: obs,
+    vendedor: vendedorAtual
+  }, 12000).then(function(d){
+    btn.disabled=false;
+    btn.innerHTML='&#128190; Salvar Compra';
+    if(d && d.ok){
+      mostrarSucessoCompra(d.id, fornecedor, totalNum, itensArr, d.statusPagamento);
+    } else {
+      customAlert(d && d.erro ? d.erro : 'Erro ao salvar. Tente novamente.');
+    }
+  }).catch(function(e){
+    btn.disabled=false; btn.innerHTML='&#128190; Salvar Compra';
+    customAlert(e.message==='Tempo esgotado' ? 'Tempo esgotado. Tente novamente.' : 'Erro de conexao. Verifique a internet.');
+  });
+}
+
+function mostrarSucessoCompra(id, fornecedor, total, itens, statusPagamento){
+  document.getElementById('formCompraScreen').style.display='none';
+  document.getElementById('successCompraScreen').style.display='block';
+  document.getElementById('compraId').textContent = 'Compra #'+id;
+  var extra = statusPagamento==='pendente' ? '<br><span style="color:var(--accent2)">&#9203; A prazo &mdash; acompanhe em "Fornecedores"</span>' : '';
+  document.getElementById('compraResumo').innerHTML =
+    '<strong style="color:var(--text)">'+fornecedor+'</strong><br>'+
+    itens.map(function(i){return i.nome+' x'+i.qtd;}).join('<br>')+'<br><br>'+
+    '<strong style="color:var(--accent)">'+fmtR$(total)+'</strong> &mdash; '+selectedPaymentCompra+extra;
+  tabsCarregadas.Caixa=false;
+  carregarContasPagar();
+}
+
+function novaCompraForm(){
+  cartCompra={};
+  precosCompra={};
+  document.getElementById('cFornecedor').value='';
+  document.getElementById('cObs').value='';
+  selectedPaymentCompra='Dinheiro';
+  document.querySelectorAll('#formCompraScreen .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
+  var hint = document.getElementById('prazoHint');
+  if(hint) hint.style.display='none';
+  renderProdutosCompra();
+  atualizarTotalCompra();
+  document.getElementById('formCompraScreen').style.display='block';
+  document.getElementById('successCompraScreen').style.display='none';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function carregarContasPagar(){
+  jsonpCall('listarContasPagar', {}).then(function(d){
+    var el = document.getElementById('listaContasPagar');
+    document.getElementById('comprasTotalAPagar').textContent = fmtR$(d && d.total || 0);
+    if(!d || !d.ok || !d.contas || !d.contas.length){
+      el.innerHTML = '<div class="empty-hint">Nenhuma conta em aberto. &#127881;</div>';
+      return;
+    }
+    el.innerHTML = d.contas.map(function(c){
+      return '<div class="list-item" style="align-items:flex-start;">'+
+      '<div class="li-main"><div class="li-title">'+c.fornecedor+'</div>'+
+      '<div class="li-sub">'+c.data+' &middot; '+c.diasEmAberto+' dia(s) em aberto</div>'+
+      '<div class="li-sub">'+c.itens+'</div></div>'+
+      '<div style="text-align:right;flex-shrink:0;">'+
+      '<div class="li-val neg" style="margin-bottom:6px;">'+fmtR$(c.total)+'</div>'+
+      '<button class="btn btn-primary btn-sm" onclick="darBaixaCompraUI(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
+      '</div></div>';
+    }).join('');
+  }).catch(function(){ document.getElementById('listaContasPagar').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
+}
+
+async function darBaixaCompraUI(compraId, total){
+  var forma = await customPrompt('Como voce pagou o fornecedor, '+fmtR$(total)+'?\n\nDigite: Dinheiro, PIX, Cartao debito ou Cartao credito', 'Dinheiro', 'Dar baixa');
+  if(forma===null) return;
+  forma = forma.trim() || 'Dinheiro';
+  jsonpCall('darBaixaCompra', {compraId: compraId, formaPagamento: forma, vendedor: vendedorAtual}).then(function(d){
+    if(d && d.ok){
+      carregarContasPagar();
+      tabsCarregadas.Caixa=false;
+    } else {
+      customAlert(d && d.erro ? d.erro : 'Erro ao dar baixa.');
+    }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
 /* ---------- DESPESAS ---------- */
 function abrirFormDespesa(){
   document.getElementById('formDespesa').classList.toggle('open');
@@ -913,12 +1156,14 @@ function carregarCaixa(periodo){
     var per = d.periodo, ger = d.geral;
     document.getElementById('caixaVendas').textContent = fmtR$(per.vendas);
     document.getElementById('caixaDespesas').textContent = fmtR$(per.despesas);
+    document.getElementById('caixaComprasPago').textContent = fmtR$(per.comprasPago);
     document.getElementById('caixaRecebido').textContent = fmtR$(per.recebido);
     var saldoEl = document.getElementById('caixaSaldoPeriodo');
     saldoEl.textContent = fmtR$(per.saldo);
     saldoEl.className = 'stat-val '+(per.saldo>=0?'pos':'neg');
     document.getElementById('caixaSaldoAtual').textContent = fmtR$(ger.saldoAtual);
     document.getElementById('caixaAReceber').textContent = fmtR$(ger.totalAReceber);
+    document.getElementById('caixaAPagar').textContent = fmtR$(ger.totalAPagar);
 
     var formaEl = document.getElementById('caixaPorForma');
     var formas = Object.keys(per.porFormaPagamento||{});
@@ -943,6 +1188,12 @@ function carregarCaixa(periodo){
     vendEl.innerHTML = vends.length ? vends.map(function(v){
       return '<div class="list-item"><div class="li-main"><div class="li-title">'+v+'</div></div><div class="li-val">'+fmtR$(per.porVendedor[v])+'</div></div>';
     }).join('') : '<div class="empty-hint">Sem vendas no periodo.</div>';
+
+    var fornEl = document.getElementById('caixaPorFornecedor');
+    var forns = Object.keys(per.porFornecedor||{});
+    fornEl.innerHTML = forns.length ? forns.map(function(f){
+      return '<div class="list-item"><div class="li-main"><div class="li-title">'+f+'</div></div><div class="li-val neg">-'+fmtR$(per.porFornecedor[f])+'</div></div>';
+    }).join('') : '<div class="empty-hint">Sem compras no periodo.</div>';
   }).catch(function(){});
   initFechData();
   carregarFechamentos();
