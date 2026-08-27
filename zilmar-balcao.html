@@ -245,6 +245,11 @@ select option{background:var(--card);}
       </div>
       <div class="empty-hint" id="clienteHint" style="display:none;margin:-6px 0 12px;"></div>
 
+      <div class="form-group" id="fDataGroup">
+        <label>Data da venda</label>
+        <input type="date" id="fData"/>
+      </div>
+
       <div class="divider"></div>
       <div class="section-title">&#128230; Produtos</div>
       <div class="products" id="productList"></div>
@@ -510,6 +515,11 @@ select option{background:var(--card);}
           <option value="__novo__">+ Novo fornecedor...</option>
         </select>
         <input type="text" id="cFornecedorNovo" placeholder="Nome do novo fornecedor" style="display:none;margin-top:8px;"/>
+      </div>
+
+      <div class="form-group" id="cDataGroup">
+        <label>Data da compra</label>
+        <input type="date" id="cData"/>
       </div>
 
       <div class="divider"></div>
@@ -821,6 +831,8 @@ function entrarNoApp(){
   document.getElementById('vendorScreen').style.display='none';
   document.getElementById('appScreen').style.display='block';
   document.getElementById('tabbar').style.display='flex';
+  var fDataEl = document.getElementById('fData');
+  if(fDataEl && !fDataEl.value) fDataEl.value = hojeISO();
   renderProdutos();
   carregarVendasRecentes();
 }
@@ -840,7 +852,12 @@ function trocarTab(nome, el){
   if(nome==='Caixa' && !tabsCarregadas.Caixa){ tabsCarregadas.Caixa=true; carregarCaixa('hoje'); }
   if(nome==='Estoque'){ carregarEstoque(); }
   if(nome==='Fiado'){ carregarFiado(); }
-  if(nome==='Compras'){ if(!produtosCompraCarregados){ produtosCompraCarregados=true; renderProdutosCompra(); } carregarContasPagar(); carregarFornecedores(); }
+  if(nome==='Compras'){
+    if(!produtosCompraCarregados){ produtosCompraCarregados=true; renderProdutosCompra(); }
+    var cDataEl = document.getElementById('cData');
+    if(cDataEl && !cDataEl.value) cDataEl.value = hojeISO();
+    carregarContasPagar(); carregarFornecedores();
+  }
 }
 
 /* ---------- PRODUTOS / VENDER ---------- */
@@ -999,6 +1016,7 @@ function salvarPedido(){
   };
   var acao = 'novoPedido';
   if(estavaEditando){ acao = 'editarPedido'; params.vendaId = estavaEditando; }
+  else { params.data = document.getElementById('fData').value || hojeISO(); }
 
   jsonpCall(acao, params, 12000).then(function(d){
     btn.disabled=false;
@@ -1038,6 +1056,9 @@ function novoPedido(){
   document.getElementById('fEnd').value='';
   document.getElementById('fObs').value='';
   document.getElementById('clienteHint').style.display='none';
+  document.getElementById('fData').value = hojeISO();
+  document.getElementById('fData').disabled = false;
+  document.getElementById('fDataGroup').style.display = 'block';
   selectedPayment='Dinheiro';
   selectedConta='Caixa';
   document.querySelectorAll('#payOptionsVender .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
@@ -1096,6 +1117,10 @@ function editarVendaUI(vendaId){
     document.getElementById('fEnd').value = venda.endereco || '';
     document.getElementById('fObs').value = (venda.obs && venda.obs!=='Venda Balcao') ? venda.obs : '';
     document.getElementById('clienteHint').style.display='none';
+    // A data original da venda nao muda ao editar (so cliente, itens,
+    // pagamento e conta) -- esconde o campo pra nao dar a entender que da
+    // pra "mover" a venda pra outro dia por aqui.
+    document.getElementById('fDataGroup').style.display='none';
     selectedPayment = venda.pagamento || 'Dinheiro';
     selectedConta = venda.conta || 'Caixa';
     marcarBotaoPorValor('payOptionsVender', selectedPayment);
@@ -1253,6 +1278,7 @@ function salvarCompra(){
   };
   var acao = 'novaCompra';
   if(estavaEditando){ acao = 'editarCompra'; params.compraId = estavaEditando; }
+  else { params.data = document.getElementById('cData').value || hojeISO(); }
 
   jsonpCall(acao, params, 12000).then(function(d){
     btn.disabled=false;
@@ -1294,6 +1320,8 @@ function novaCompraForm(){
   var sel = document.getElementById('cFornecedorSelect');
   if(sel) sel.value='';
   document.getElementById('cObs').value='';
+  document.getElementById('cData').value = hojeISO();
+  document.getElementById('cDataGroup').style.display='block';
   selectedPaymentCompra='Dinheiro';
   selectedContaCompra='Caixa';
   document.querySelectorAll('#payOptionsCompra .pay-opt').forEach(function(o,i){o.classList.toggle('selected',i===0);});
@@ -1347,6 +1375,10 @@ function editarCompraUI(compraId){
       }
     }
     document.getElementById('cObs').value = c.obs || '';
+    // A data original da compra nao muda ao editar (so fornecedor, itens,
+    // pagamento e conta) -- esconde o campo pra nao dar a entender que da
+    // pra "mover" a compra pra outro dia por aqui.
+    document.getElementById('cDataGroup').style.display='none';
     selectedPaymentCompra = c.formaPagamento || 'Dinheiro';
     selectedContaCompra = c.conta || 'Caixa';
     marcarBotaoPorValor('payOptionsCompra', selectedPaymentCompra);
@@ -1858,7 +1890,7 @@ function imprimirRelatorioFiado(){
   jsonpCall('listarContasReceber', {}).then(function(d){
     montarRelatorioFiadoPorCliente(d);
     setTimeout(function(){ window.print(); }, 150);
-  }).catch(function(){ customAlert('Erro ao montar o relatorio.'); });
+  }).catch(function(e){ customAlert('Erro ao montar o relatorio' + (e && e.message ? (': '+e.message) : '.') + ' Tente de novo; se continuar, avise qual mensagem apareceu.'); });
 }
 
 function montarRelatorioFiadoPorCliente(d){
@@ -1870,7 +1902,7 @@ function montarRelatorioFiadoPorCliente(d){
     var porCliente = {};
     var ordem = [];
     d.contas.forEach(function(c){
-      var chave = (c.telefone || c.nome || '?').trim();
+      var chave = String(c.telefone || c.nome || '?').trim();
       if(!porCliente[chave]){
         porCliente[chave] = { nome: c.nome||'Cliente', telefone: c.telefone||'', qtd:0, total:0, maiorAtraso:0 };
         ordem.push(chave);
@@ -1973,7 +2005,7 @@ function imprimirResumoDia(){
   ]).then(function(res){
     montarRelatorioImpressao(res[0], res[1], res[2], res[3]);
     setTimeout(function(){ window.print(); }, 150);
-  }).catch(function(){ customAlert('Erro ao montar o relatorio.'); });
+  }).catch(function(e){ customAlert('Erro ao montar o relatorio' + (e && e.message ? (': '+e.message) : '.') + ' Tente de novo; se continuar, avise qual mensagem apareceu.'); });
 }
 
 function montarRelatorioImpressao(resumo, vendasResp, estoqueResp, perdasResp){
@@ -2001,7 +2033,7 @@ function montarRelatorioImpressao(resumo, vendasResp, estoqueResp, perdasResp){
     var ordemProdutos = [];
     vendas.forEach(function(v){
       (v.itensArr||[]).forEach(function(it){
-        var nome = it.nome || '?';
+        var nome = String(it.nome || '?');
         if(totalPorProduto[nome]===undefined){ totalPorProduto[nome]=0; ordemProdutos.push(nome); }
         totalPorProduto[nome] += Number(it.qtd)||0;
       });
@@ -2015,7 +2047,7 @@ function montarRelatorioImpressao(resumo, vendasResp, estoqueResp, perdasResp){
     vendas.forEach(function(v){
       var horaSo = String(v.dataHora||'').split(' ').pop();
       var qtdPorProduto = {};
-      (v.itensArr||[]).forEach(function(it){ qtdPorProduto[it.nome] = (qtdPorProduto[it.nome]||0) + (Number(it.qtd)||0); });
+      (v.itensArr||[]).forEach(function(it){ var nome=String(it.nome||'?'); qtdPorProduto[nome] = (qtdPorProduto[nome]||0) + (Number(it.qtd)||0); });
       totalGeralDia += Number(v.total)||0;
       html += '<tr><td>'+horaSo+'</td><td>'+(v.nome||'-')+'</td>'+
         ordemProdutos.map(function(p){ return '<td style="text-align:center;">'+(qtdPorProduto[p]||'')+'</td>'; }).join('')+
