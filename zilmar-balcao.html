@@ -268,7 +268,7 @@ select option{background:var(--card);}
         <div class="pay-opt" onclick="selectPay(this,'Fiado')"><div class="pay-opt-icon">&#129309;</div><div class="pay-opt-label">Fiado</div></div>
       </div>
 
-      <div class="fiado-hint" id="fiadoHint"><strong>&#129309; Venda fiado:</strong> vai aparecer na aba "Fiado" como pendente ate voce dar baixa quando o cliente pagar. Preencha o nome do cliente.</div>
+      <div class="fiado-hint" id="fiadoHint"><strong>&#129309; Venda fiado:</strong> vai aparecer na aba "Contas a Receber" como pendente ate voce dar baixa quando o cliente pagar. Preencha o nome do cliente.</div>
 
       <div class="section-title">&#127974; Conta (onde o dinheiro fica)</div>
       <div class="pay-options" id="contaOptionsVender" style="grid-template-columns:1fr 1fr;">
@@ -336,15 +336,17 @@ select option{background:var(--card);}
         </div>
         <div class="form-group">
           <label>Forma de pagamento</label>
-          <select id="dPagamento">
+          <select id="dPagamento" onchange="onDespesaPagamentoChange()">
             <option>Dinheiro</option>
             <option>PIX</option>
             <option>Cartao debito</option>
             <option>Cartao credito</option>
             <option>Boleto</option>
+            <option>A prazo</option>
           </select>
         </div>
       </div>
+      <div class="fiado-hint" id="dPrazoHint" style="display:none;"><strong>&#128197; Despesa a prazo:</strong> vai aparecer na aba <strong>Pagar</strong> como pendente ate voce dar baixa quando pagar. So entao ela sai do seu caixa.</div>
       <div class="form-group">
         <label>&#127974; Conta (de onde saiu o dinheiro)</label>
         <select id="dConta">
@@ -384,6 +386,21 @@ select option{background:var(--card);}
       <div class="period-btn" onclick="selecionarPeriodo('7dias',this)">7 dias</div>
       <div class="period-btn" onclick="selecionarPeriodo('mes',this)">Este mes</div>
       <div class="period-btn" onclick="selecionarPeriodo('tudo',this)">Tudo</div>
+      <div class="period-btn" id="btnPeriodoPersonalizado" onclick="selecionarPeriodo('personalizado',this)">Escolher data</div>
+    </div>
+
+    <div class="card" id="periodoPersonalizadoBox" style="display:none;margin-bottom:14px;">
+      <div class="row-2">
+        <div class="form-group">
+          <label>De</label>
+          <input type="date" id="caixaDataInicio"/>
+        </div>
+        <div class="form-group">
+          <label>Ate</label>
+          <input type="date" id="caixaDataFim"/>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="aplicarPeriodoPersonalizado()">Ver esse periodo</button>
     </div>
 
     <div class="stat-grid">
@@ -504,6 +521,15 @@ select option{background:var(--card);}
     <div id="listaFiado"><div class="empty-hint">Carregando...</div></div>
   </div>
 
+  <!-- ===================== TAB: CONTAS A PAGAR (COMPRAS + DESPESAS) ===================== -->
+  <div class="tab-panel" id="tabPagar">
+    <div class="card" style="text-align:center;">
+      <div class="stat-lbl">Total a pagar</div>
+      <div class="stat-val neg" id="pagarTotal">R$ 0,00</div>
+    </div>
+    <div id="listaPagar"><div class="empty-hint">Carregando...</div></div>
+  </div>
+
   <!-- ===================== TAB: COMPRAS / FORNECEDORES ===================== -->
   <div class="tab-panel" id="tabCompras">
 
@@ -567,12 +593,7 @@ select option{background:var(--card);}
     </div>
 
     <div class="divider"></div>
-    <div class="section-title">&#128230; Fornecedores &mdash; contas a pagar</div>
-    <div class="card" style="text-align:center;">
-      <div class="stat-lbl">Total a pagar</div>
-      <div class="stat-val neg" id="comprasTotalAPagar">R$ 0,00</div>
-    </div>
-    <div id="listaContasPagar"><div class="empty-hint">Carregando...</div></div>
+    <div class="fiado-hint">&#129534; Compras a prazo (pendentes) agora ficam na aba <strong>Pagar</strong>, junto com as despesas a prazo.</div>
 
     <div class="divider"></div>
     <div class="section-title">&#128203; Compras recentes</div>
@@ -590,7 +611,8 @@ select option{background:var(--card);}
   <button class="tabbar-btn" onclick="trocarTab('Despesas',this)"><span class="ic">&#128181;</span>Despesas</button>
   <button class="tabbar-btn" onclick="trocarTab('Caixa',this)"><span class="ic">&#128200;</span>Caixa</button>
   <button class="tabbar-btn" onclick="trocarTab('Estoque',this)"><span class="ic">&#128721;</span>Estoque</button>
-  <button class="tabbar-btn" onclick="trocarTab('Fiado',this)"><span class="ic">&#128210;</span>Fiado</button>
+  <button class="tabbar-btn" onclick="trocarTab('Fiado',this)"><span class="ic">&#128210;</span>Receber</button>
+  <button class="tabbar-btn" onclick="trocarTab('Pagar',this)"><span class="ic">&#129534;</span>Pagar</button>
 </div>
 
 <div id="printArea"></div>
@@ -838,7 +860,7 @@ function entrarNoApp(){
 }
 
 /* ---------- TABS ---------- */
-var headings = {Vender:'&#128722; Nova Venda', Compras:'&#128666; Compras', Despesas:'&#128181; Despesas', Caixa:'&#128200; Caixa', Estoque:'&#128230; Estoque', Fiado:'&#128210; A Receber (Fiado)'};
+var headings = {Vender:'&#128722; Nova Venda', Compras:'&#128666; Compras', Despesas:'&#128181; Despesas', Caixa:'&#128200; Caixa', Estoque:'&#128230; Estoque', Fiado:'&#128210; Contas a Receber', Pagar:'&#129534; Contas a Pagar'};
 var tabsCarregadas = {};
 function trocarTab(nome, el){
   document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
@@ -852,11 +874,12 @@ function trocarTab(nome, el){
   if(nome==='Caixa' && !tabsCarregadas.Caixa){ tabsCarregadas.Caixa=true; carregarCaixa('hoje'); }
   if(nome==='Estoque'){ carregarEstoque(); }
   if(nome==='Fiado'){ carregarFiado(); }
+  if(nome==='Pagar'){ carregarPagar(); }
   if(nome==='Compras'){
     if(!produtosCompraCarregados){ produtosCompraCarregados=true; renderProdutosCompra(); }
     var cDataEl = document.getElementById('cData');
     if(cDataEl && !cDataEl.value) cDataEl.value = hojeISO();
-    carregarContasPagar(); carregarFornecedores();
+    carregarComprasRecentes(); carregarFornecedores();
   }
 }
 
@@ -1039,7 +1062,7 @@ function mostrarSucesso(id, nome, total, itens, foiEdicao){
   document.getElementById('successScreen').style.display='block';
   document.getElementById('successTitle').textContent = foiEdicao ? 'Venda editada!' : 'Venda salva!';
   document.getElementById('pedidoId').textContent = 'Venda #'+id;
-  var extra = selectedPayment==='Fiado' ? '<br><span style="color:var(--accent2)">&#9203; Fiado — acompanhe na aba "Fiado"</span>' : '';
+  var extra = selectedPayment==='Fiado' ? '<br><span style="color:var(--accent2)">&#9203; Fiado — acompanhe na aba "Contas a Receber"</span>' : '';
   document.getElementById('pedidoResumo').innerHTML =
     '<strong style="color:var(--text)">'+nome+'</strong><br>'+
     itens.map(function(i){return i.nome+' x'+i.qtd;}).join('<br>')+'<br><br>'+
@@ -1307,7 +1330,8 @@ function mostrarSucessoCompra(id, fornecedor, total, itens, statusPagamento, foi
     itens.map(function(i){return i.nome+' x'+i.qtd;}).join('<br>')+'<br><br>'+
     '<strong style="color:var(--accent)">'+fmtR$(total)+'</strong> &mdash; '+selectedPaymentCompra+extra;
   tabsCarregadas.Caixa=false;
-  carregarContasPagar();
+  carregarComprasRecentes();
+  carregarPagar();
   carregarFornecedores();
 }
 
@@ -1437,28 +1461,55 @@ function getFornecedorAtual(){
   return sel.value.trim();
 }
 
-function carregarContasPagar(){
-  jsonpCall('listarContasPagar', {}).then(function(d){
-    var el = document.getElementById('listaContasPagar');
-    document.getElementById('comprasTotalAPagar').textContent = fmtR$(d && d.total || 0);
-    if(!d || !d.ok || !d.contas || !d.contas.length){
+function carregarPagar(){
+  Promise.all([
+    jsonpCall('listarContasPagar', {}),
+    jsonpCall('listarDespesasAPagar', {})
+  ]).then(function(res){
+    var dCompras = res[0], dDespesas = res[1];
+    var el = document.getElementById('listaPagar');
+    var totalCompras = (dCompras && dCompras.total) || 0;
+    var totalDespesas = (dDespesas && dDespesas.total) || 0;
+    document.getElementById('pagarTotal').textContent = fmtR$(totalCompras + totalDespesas);
+    var itens = [];
+    if(dCompras && dCompras.ok && dCompras.contas){
+      dCompras.contas.forEach(function(c){
+        itens.push({ tipo:'compra', id:c.id, titulo:c.fornecedor, data:c.data, diasEmAberto:c.diasEmAberto, extra:c.itens, total:c.total });
+      });
+    }
+    if(dDespesas && dDespesas.ok && dDespesas.contas){
+      dDespesas.contas.forEach(function(c){
+        itens.push({ tipo:'despesa', id:c.id, titulo:c.descricao+(c.categoria?' ('+c.categoria+')':''), data:c.data, diasEmAberto:c.diasEmAberto, extra:'', total:c.total });
+      });
+    }
+    if(!itens.length){
       el.innerHTML = '<div class="empty-hint">Nenhuma conta em aberto. &#127881;</div>';
       return;
     }
-    el.innerHTML = d.contas.map(function(c){
+    itens.sort(function(a,b){ return b.diasEmAberto - a.diasEmAberto; });
+    el.innerHTML = itens.map(function(c){
+      var tag = c.tipo === 'compra' ? '<span style="opacity:.6;font-size:11px;">&#128230; Compra</span>' : '<span style="opacity:.6;font-size:11px;">&#128184; Despesa</span>';
+      var botoes;
+      if(c.tipo === 'compra'){
+        botoes = '<button class="btn btn-primary btn-sm" onclick="darBaixaCompraUI(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
+        '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarCompraUI(\''+c.id+'\')">Editar</button>'+
+        '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarCompraUI(\''+c.id+'\',\''+c.titulo.replace(/'/g,"")+'\')">Cancelar</button>';
+      } else {
+        botoes = '<button class="btn btn-primary btn-sm" onclick="darBaixaDespesaUI(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
+        '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarDespesaUI(\''+c.id+'\')">Editar</button>';
+      }
       return '<div class="list-item" style="align-items:flex-start;">'+
-      '<div class="li-main"><div class="li-title">'+c.fornecedor+'</div>'+
+      '<div class="li-main"><div class="li-title">'+c.titulo+'</div>'+
+      '<div class="li-sub">'+tag+'</div>'+
       '<div class="li-sub">'+c.data+' &middot; '+c.diasEmAberto+' dia(s) em aberto</div>'+
-      '<div class="li-sub">'+c.itens+'</div></div>'+
+      (c.extra ? '<div class="li-sub">'+c.extra+'</div>' : '')+
+      '</div>'+
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val neg" style="margin-bottom:6px;">'+fmtR$(c.total)+'</div>'+
-      '<button class="btn btn-primary btn-sm" onclick="darBaixaCompraUI(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
-      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarCompraUI(\''+c.id+'\')">Editar</button>'+
-      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarCompraUI(\''+c.id+'\',\''+c.fornecedor.replace(/'/g,"")+'\')">Cancelar</button>'+
+      botoes+
       '</div></div>';
     }).join('');
-  }).catch(function(){ document.getElementById('listaContasPagar').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
-  carregarComprasRecentes();
+  }).catch(function(){ document.getElementById('listaPagar').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
 }
 
 async function darBaixaCompraUI(compraId, total){
@@ -1468,7 +1519,24 @@ async function darBaixaCompraUI(compraId, total){
   if(!conta) return;
   jsonpCall('darBaixaCompra', {compraId: compraId, formaPagamento: forma, conta: conta, vendedor: vendedorAtual}).then(function(d){
     if(d && d.ok){
-      carregarContasPagar();
+      carregarComprasRecentes();
+      carregarPagar();
+      tabsCarregadas.Caixa=false;
+    } else {
+      customAlert(d && d.erro ? d.erro : 'Erro ao dar baixa.');
+    }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
+async function darBaixaDespesaUI(despesaId, total){
+  var forma = await promptFormaPagamento('Como voce pagou essa despesa, '+fmtR$(total)+'?', 'Dar baixa');
+  if(!forma) return;
+  var conta = await promptConta('De qual conta saiu o dinheiro?', 'Dar baixa');
+  if(!conta) return;
+  jsonpCall('darBaixaDespesa', {despesaId: despesaId, formaPagamento: forma, conta: conta, vendedor: vendedorAtual}).then(function(d){
+    if(d && d.ok){
+      carregarDespesas();
+      carregarPagar();
       tabsCarregadas.Caixa=false;
     } else {
       customAlert(d && d.erro ? d.erro : 'Erro ao dar baixa.');
@@ -1484,7 +1552,8 @@ async function cancelarCompraUI(compraId, fornecedor){
   if(!ok) return;
   jsonpCall('cancelarCompra', {compraId: compraId, vendedor: vendedorAtual}).then(function(d){
     if(d && d.ok){
-      carregarContasPagar();
+      carregarComprasRecentes();
+      carregarPagar();
       carregarEstoque();
       tabsCarregadas.Caixa=false;
     } else {
@@ -1528,6 +1597,11 @@ function abrirFormDespesa(){
   if(!dData.value) dData.value = hojeISO();
 }
 
+function onDespesaPagamentoChange(){
+  var hint = document.getElementById('dPrazoHint');
+  hint.style.display = (document.getElementById('dPagamento').value === 'A prazo') ? 'block' : 'none';
+}
+
 function limparFormDespesa(){
   document.getElementById('dDesc').value='';
   document.getElementById('dValor').value='';
@@ -1536,6 +1610,7 @@ function limparFormDespesa(){
   document.getElementById('dCategoria').selectedIndex = 0;
   document.getElementById('dPagamento').selectedIndex = 0;
   document.getElementById('dConta').value = 'Caixa';
+  onDespesaPagamentoChange();
 }
 
 function cancelarEdicaoDespesa(){
@@ -1558,6 +1633,7 @@ function editarDespesaUI(despesaId){
     document.getElementById('dValor').value = desp.valor || '';
     document.getElementById('dCategoria').value = desp.categoria || 'Outros';
     document.getElementById('dPagamento').value = desp.formaPagamento || 'Dinheiro';
+    onDespesaPagamentoChange();
     document.getElementById('dConta').value = desp.conta || 'Caixa';
     document.getElementById('dObs').value = desp.obs || '';
     document.getElementById('formDespesa').classList.add('open');
@@ -1617,10 +1693,13 @@ function carregarDespesas(periodo){
     var total = d.despesas.reduce(function(s,x){return s+Number(x.valor||0);},0);
     document.getElementById('totalDespesasHoje').textContent = fmtR$(total);
     el.innerHTML = d.despesas.map(function(x){
+      var statusTxt = x.statusPagamento==='pendente' ? ' · <strong>Pendente</strong>' : '';
+      var btnBaixa = x.statusPagamento==='pendente' ? '<button class="btn btn-primary btn-sm" style="margin-bottom:6px;" onclick="darBaixaDespesaUI(\''+x.id+'\','+x.valor+')">Dar baixa</button>' : '';
       return '<div class="list-item"><div class="li-main"><div class="li-title">'+x.descricao+'</div>'+
-      '<div class="li-sub">'+x.data+' · <span class="chip">'+x.categoria+'</span> · '+x.formaPagamento+(x.vendedor?' · '+x.vendedor:'')+'</div></div>'+
+      '<div class="li-sub">'+x.data+' · <span class="chip">'+x.categoria+'</span> · '+x.formaPagamento+(x.vendedor?' · '+x.vendedor:'')+statusTxt+'</div></div>'+
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val neg" style="margin-bottom:6px;">-'+fmtR$(x.valor)+'</div>'+
+      btnBaixa+
       '<button class="btn btn-outline btn-sm" onclick="editarDespesaUI(\''+x.id+'\')">Editar</button>'+
       '</div></div>';
     }).join('');
@@ -1642,7 +1721,30 @@ function selecionarPeriodo(p, el){
   periodoAtual = p;
   document.querySelectorAll('#periodTabs .period-btn').forEach(function(b){b.classList.remove('active');});
   el.classList.add('active');
-  carregarCaixa(p);
+  var caixa = document.getElementById('periodoPersonalizadoBox');
+  if(p==='personalizado'){
+    caixa.style.display='block';
+    if(!document.getElementById('caixaDataInicio').value){
+      document.getElementById('caixaDataInicio').value = isoMenosDias(7);
+      document.getElementById('caixaDataFim').value = hojeISO();
+    }
+    // So carrega de fato quando clicar em "Ver esse periodo" -- as datas
+    // ainda podem estar vazias/erradas na primeira vez que abre esse campo.
+    if(document.getElementById('caixaDataInicio').value && document.getElementById('caixaDataFim').value){
+      carregarCaixa(p);
+    }
+  } else {
+    caixa.style.display='none';
+    carregarCaixa(p);
+  }
+}
+
+function aplicarPeriodoPersonalizado(){
+  var ini = document.getElementById('caixaDataInicio').value;
+  var fim = document.getElementById('caixaDataFim').value;
+  if(!ini || !fim){ customAlert('Escolha as duas datas (de/ate).'); return; }
+  if(ini > fim){ customAlert('A data "De" nao pode ser depois da data "Ate".'); return; }
+  carregarCaixa('personalizado');
 }
 
 async function promptTransferir(){
@@ -1666,12 +1768,16 @@ async function promptTransferir(){
 }
 
 function carregarCaixa(periodo){
-  var inicio;
-  if(periodo==='hoje') inicio = hojeISO();
-  else if(periodo==='7dias') inicio = isoMenosDias(7);
-  else if(periodo==='mes') inicio = isoInicioMes();
-  else inicio = '';
-  jsonpCall('getResumoCaixa', {inicio:inicio, fim: periodo==='tudo' ? '' : hojeISO(), conta: contaAtualCaixa}).then(function(d){
+  var inicio, fim;
+  if(periodo==='hoje'){ inicio = hojeISO(); fim = hojeISO(); }
+  else if(periodo==='7dias'){ inicio = isoMenosDias(7); fim = hojeISO(); }
+  else if(periodo==='mes'){ inicio = isoInicioMes(); fim = hojeISO(); }
+  else if(periodo==='personalizado'){
+    inicio = document.getElementById('caixaDataInicio').value || isoMenosDias(7);
+    fim = document.getElementById('caixaDataFim').value || hojeISO();
+  }
+  else { inicio = ''; fim = ''; }
+  jsonpCall('getResumoCaixa', {inicio:inicio, fim: fim, conta: contaAtualCaixa}).then(function(d){
     if(!d || !d.ok) return;
     var per = d.periodo, ger = d.geral;
     document.getElementById('caixaVendas').textContent = fmtR$(per.vendas);
