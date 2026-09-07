@@ -1115,14 +1115,17 @@ function carregarVendasRecentes(){
     }
     el.innerHTML = d.vendas.map(function(v){
       var horaSo = String(v.dataHora||'').split(' ').pop();
-      var statusTxt = v.statusPagamento==='pendente' ? '<span style="color:var(--accent2)">Fiado pendente</span>' : (v.pagamento||'');
-      return '<div class="list-item" style="align-items:flex-start;">'+
+      var statusTxt = v.statusPagamento==='cancelada' ? '<span style="opacity:.6;">Cancelada</span>' : (v.statusPagamento==='pendente' ? '<span style="color:var(--accent2)">Fiado pendente</span>' : (v.pagamento||''));
+      var btnEditar = v.statusPagamento==='cancelada' ? '' : '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarVendaUI(\''+v.id+'\')">Editar</button>';
+      var btnCancelar = v.statusPagamento==='cancelada' ? '' : '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarVendaUI(\''+v.id+'\',\''+(v.nome||'Venda Balcao').replace(/'/g,"")+'\')">Cancelar</button>';
+      return '<div class="list-item" style="align-items:flex-start;'+(v.statusPagamento==='cancelada'?'opacity:.55;':'')+'">'+
       '<div class="li-main"><div class="li-title">'+(v.nome||'Venda Balcao')+'</div>'+
       '<div class="li-sub">'+horaSo+' &middot; '+statusTxt+'</div>'+
       '<div class="li-sub">'+(v.itens||'')+'</div></div>'+
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val">'+fmtR$(v.total)+'</div>'+
-      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarVendaUI(\''+v.id+'\')">Editar</button>'+
+      btnEditar+
+      btnCancelar+
       '</div></div>';
     }).join('');
   }).catch(function(){ var el=document.getElementById('listaVendasRecentes'); if(el) el.innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
@@ -1136,6 +1139,7 @@ function editarVendaUI(vendaId){
   jsonpCall('listarVendas', {inicio: '', fim: ''}).then(function(d){
     var venda = d && d.vendas && d.vendas.find(function(v){ return String(v.id)===String(vendaId); });
     if(!venda){ customAlert('Venda nao encontrada.'); return; }
+    if(venda.statusPagamento==='cancelada'){ customAlert('Essa venda foi cancelada e nao pode ser editada.'); return; }
     editandoVendaId = vendaId;
     cart = {}; precosEditados = {};
     (venda.itensArr||[]).forEach(function(it){
@@ -1162,6 +1166,25 @@ function editarVendaUI(vendaId){
     document.getElementById('formScreen').style.display='block';
     document.getElementById('successScreen').style.display='none';
     mostrarTabVender();
+  }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
+// Cancela uma venda (errou algo, ou o cliente pediu e depois desistiu).
+// Devolve o estoque que ela tinha baixado -- espelho de cancelarCompraUI().
+// Funciona tanto pra uma venda comum quanto pra uma venda fiado ainda
+// pendente (nesse caso ela some sozinha da aba Receber depois de cancelada).
+async function cancelarVendaUI(vendaId, nome){
+  var ok = await customConfirm('Cancelar a venda de "'+nome+'"?\n\nIsso devolve o estoque que essa venda tinha baixado. Se for uma venda fiado ainda pendente, ela deixa de aparecer na aba Receber. Depois e so lancar a venda de novo, certinha, se for o caso.', 'Cancelar venda');
+  if(!ok) return;
+  jsonpCall('cancelarVenda', {vendaId: vendaId, vendedor: vendedorAtual}).then(function(d){
+    if(d && d.ok){
+      carregarVendasRecentes();
+      carregarFiado();
+      carregarEstoque();
+      tabsCarregadas.Caixa=false;
+    } else {
+      customAlert(d && d.erro ? d.erro : 'Erro ao cancelar.');
+    }
   }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
@@ -1550,6 +1573,23 @@ async function darBaixaDespesaUI(despesaId, total){
   }).catch(function(){ customAlert('Erro de conexao.'); });
 }
 
+// Cancela uma despesa (errou algo, ou o gasto acabou nao acontecendo de
+// verdade) -- espelho de cancelarCompraUI()/cancelarVendaUI(). Nao mexe em
+// estoque; se ainda estava "a prazo" (pendente), some sozinha da aba Pagar.
+async function cancelarDespesaUI(despesaId, descricao){
+  var ok = await customConfirm('Cancelar a despesa "'+descricao+'"?\n\nSe ela ainda estava pendente (a prazo), sai da aba Pagar. Depois e so lancar a despesa de novo, certinha, se for o caso.', 'Cancelar despesa');
+  if(!ok) return;
+  jsonpCall('cancelarDespesa', {despesaId: despesaId, vendedor: vendedorAtual}).then(function(d){
+    if(d && d.ok){
+      carregarDespesas();
+      carregarPagar();
+      tabsCarregadas.Caixa=false;
+    } else {
+      customAlert(d && d.erro ? d.erro : 'Erro ao cancelar.');
+    }
+  }).catch(function(){ customAlert('Erro de conexao.'); });
+}
+
 // Nao existe "editar" uma compra ja salva -- o caminho e cancelar (o que
 // devolve o estoque que ela tinha somado e tira ela do caixa/a-pagar) e
 // lancar uma nova, certinha, no lugar.
@@ -1633,6 +1673,7 @@ function editarDespesaUI(despesaId){
   jsonpCall('listarDespesas', {inicio:'', fim:''}).then(function(d){
     var desp = d && d.despesas && d.despesas.find(function(x){ return String(x.id)===String(despesaId); });
     if(!desp){ customAlert('Despesa nao encontrada.'); return; }
+    if(desp.statusPagamento==='cancelada'){ customAlert('Essa despesa foi cancelada e nao pode ser editada.'); return; }
     editandoDespesaId = despesaId;
     document.getElementById('dDesc').value = desp.descricao || '';
     document.getElementById('dData').value = desp.dataIso || hojeISO();
@@ -1696,17 +1737,21 @@ function carregarDespesas(periodo){
       document.getElementById('totalDespesasHoje').textContent = fmtR$(0);
       return;
     }
-    var total = d.despesas.reduce(function(s,x){return s+Number(x.valor||0);},0);
+    var total = d.despesas.reduce(function(s,x){ return x.statusPagamento==='cancelada' ? s : s+Number(x.valor||0); },0);
     document.getElementById('totalDespesasHoje').textContent = fmtR$(total);
     el.innerHTML = d.despesas.map(function(x){
-      var statusTxt = x.statusPagamento==='pendente' ? ' · <strong>Pendente</strong>' : '';
-      var btnBaixa = x.statusPagamento==='pendente' ? '<button class="btn btn-primary btn-sm" style="margin-bottom:6px;" onclick="darBaixaDespesaUI(\''+x.id+'\','+x.valor+')">Dar baixa</button>' : '';
-      return '<div class="list-item"><div class="li-main"><div class="li-title">'+x.descricao+'</div>'+
+      var cancelada = x.statusPagamento==='cancelada';
+      var statusTxt = cancelada ? ' · <span style="opacity:.6;">Cancelada</span>' : (x.statusPagamento==='pendente' ? ' · <strong>Pendente</strong>' : '');
+      var btnBaixa = (!cancelada && x.statusPagamento==='pendente') ? '<button class="btn btn-primary btn-sm" style="margin-bottom:6px;" onclick="darBaixaDespesaUI(\''+x.id+'\','+x.valor+')">Dar baixa</button>' : '';
+      var btnEditar = cancelada ? '' : '<button class="btn btn-outline btn-sm" onclick="editarDespesaUI(\''+x.id+'\')">Editar</button>';
+      var btnCancelar = cancelada ? '' : '<button class="btn btn-outline btn-sm" onclick="cancelarDespesaUI(\''+x.id+'\',\''+String(x.descricao||'').replace(/'/g,"")+'\')">Cancelar</button>';
+      return '<div class="list-item" style="'+(cancelada?'opacity:.55;':'')+'"><div class="li-main"><div class="li-title">'+x.descricao+'</div>'+
       '<div class="li-sub">'+x.data+' · <span class="chip">'+x.categoria+'</span> · '+x.formaPagamento+(x.vendedor?' · '+x.vendedor:'')+statusTxt+'</div></div>'+
       '<div style="text-align:right;flex-shrink:0;">'+
       '<div class="li-val neg" style="margin-bottom:6px;">-'+fmtR$(x.valor)+'</div>'+
       btnBaixa+
-      '<button class="btn btn-outline btn-sm" onclick="editarDespesaUI(\''+x.id+'\')">Editar</button>'+
+      btnEditar+
+      btnCancelar+
       '</div></div>';
     }).join('');
   }).catch(function(){ document.getElementById('listaDespesas').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
@@ -1990,6 +2035,7 @@ function carregarFiado(){
       '<div class="li-val" style="margin-bottom:6px;">'+fmtR$(c.total)+'</div>'+
       '<button class="btn btn-primary btn-sm" onclick="darBaixa(\''+c.id+'\','+c.total+')">Dar baixa</button>'+
       '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="editarVendaUI(\''+c.id+'\')">Editar</button>'+
+      '<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="cancelarVendaUI(\''+c.id+'\',\''+(c.nome||'Cliente').replace(/'/g,"")+'\')">Cancelar</button>'+
       '</div></div>';
     }).join('');
   }).catch(function(){ document.getElementById('listaFiado').innerHTML='<div class="empty-hint">Erro ao carregar.</div>'; });
@@ -2136,8 +2182,11 @@ function montarRelatorioImpressao(resumo, vendasResp, estoqueResp, perdasResp){
   }
 
   html += '<h2>Vendas de hoje</h2>';
-  if(vendasResp && vendasResp.ok && vendasResp.vendas && vendasResp.vendas.length){
-    var vendas = vendasResp.vendas;
+  // Vendas canceladas nao contam pro resumo do dia -- o estoque/caixa delas
+  // ja foi desfeito no cancelamento, entao entrariam duplicadas na conferencia.
+  var vendasValidas = (vendasResp && vendasResp.ok && vendasResp.vendas) ? vendasResp.vendas.filter(function(v){ return v.statusPagamento !== 'cancelada'; }) : [];
+  if(vendasValidas.length){
+    var vendas = vendasValidas;
     // Uma coluna por produto vendido no dia (em vez de um texto corrido de
     // itens) -- facilita conferir quantidade por produto de cada venda.
     // Ordem: pelo total vendido no dia (produto mais vendido primeiro).
